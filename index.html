@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tesvila Inventory & Purchasing MVP</title>
+    <style>
+      :root {
+        --ink: #17202a;
+        --muted: #657080;
+        --line: #d9dee5;
+        --panel: #f7f8fa;
+        --brand: #0f766e;
+        --accent: #b45309;
+        --danger: #b91c1c;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--panel);
+        color: var(--ink);
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        min-height: 100vh;
+      }
+
+      aside {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        border-right: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .brand {
+        padding: 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand strong {
+        display: block;
+        font-size: 19px;
+      }
+
+      .brand span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      nav {
+        padding: 12px;
+      }
+
+      nav button {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 6px;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      nav button.active,
+      nav button:hover {
+        background: var(--panel);
+      }
+
+      header {
+        height: 64px;
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+      }
+
+      main {
+        min-width: 0;
+      }
+
+      .content {
+        padding: 24px;
+      }
+
+      .page {
+        display: none;
+      }
+
+      .page.active {
+        display: block;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 26px;
+      }
+
+      .sub {
+        margin: 6px 0 20px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .metric-value {
+        margin-top: 8px;
+        font-size: 26px;
+        font-weight: 700;
+      }
+
+      .metric-helper {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      input,
+      select {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 9px 10px;
+        background: #fff;
+        color: var(--ink);
+      }
+
+      .button {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        padding: 9px 12px;
+        cursor: pointer;
+      }
+
+      .button.primary {
+        background: var(--brand);
+        color: #fff;
+        border-color: var(--brand);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 820px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        text-align: left;
+        font-size: 14px;
+      }
+
+      th {
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .pill {
+        display: inline-flex;
+        border-radius: 999px;
+        padding: 4px 8px;
+        background: #ecfdf5;
+        color: #047857;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .pill.warn {
+        background: #fffbeb;
+        color: var(--accent);
+      }
+
+      .two {
+        grid-template-columns: 1.3fr 0.7fr;
+      }
+
+      .form-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .notice {
+        border-left: 4px solid var(--brand);
+        background: #ecfdf5;
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside>
+        <div class="brand">
+          <strong>Tesvila</strong>
+          <span>Inventory & Purchasing</span>
+        </div>
+        <nav id="nav"></nav>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <strong>Internal Management System</strong>
+            <div class="metric-helper">DO completed stock-out · WAC costing · Partial delivery</div>
+          </div>
+          <span class="pill">Admin</span>
+        </header>
+        <div class="content" id="content"></div>
+      </main>
+    </div>
+
+    <script>
+      const products = [
+        ["TB-9001", "One Piece Toilet Bowl", "Tesvila", "Toilet Bowl", "Main Warehouse", 38, 148.25, 260, 338, "Active"],
+        ["SH-230", "Rain Shower Set", "AquaPro", "Shower Set", "Main Warehouse", 12, 72.6, 138, 188, "Active"],
+        ["FT-80", "Stainless Floor Trap", "Tesvila", "Floor Trap", "Showroom", 5, 9.8, 18, 28, "Active"]
+      ];
+
+      const stockMovements = [
+        ["2026-06-04", "STOCK_IN", "TB-9001", "Main Warehouse", 20, "PO0505202601"],
+        ["2026-06-04", "STOCK_OUT", "SH-230", "Main Warehouse", 1, "DO0505202601"]
+      ];
+
+      const customers = [
+        ["ABC Hardware Trading", "Kelvin", "Dealer", "dealer", "30 days", "+65 8888 0001"],
+        ["Home Reno Studio", "May", "Retail", "retail", "COD", "+65 8888 0002"]
+      ];
+
+      const suppliers = [
+        ["Guangzhou Sanitary Supply", "Ms Chen", "RMB", "Deposit + balance", "+86 138 0000 0000"],
+        ["Foshan Bath Co", "Mr Li", "USD", "Before shipment", "+86 139 0000 0000"]
+      ];
+
+      function money(value) {
+        return "$" + Number(value).toFixed(2);
+      }
+
+      function calculateLandedCost() {
+        const rate = Number(document.querySelector("#rate")?.value || 0.185);
+        const shipping = Number(document.querySelector("#shipping")?.value || 850);
+        const tax = Number(document.querySelector("#tax")?.value || 240);
+        const other = Number(document.querySelector("#other")?.value || 120);
+        const fee = Number(document.querySelector("#fee")?.value || 45);
+        const method = document.querySelector("#allocation")?.value || "value";
+        const items = [
+          { code: "TB-9001", name: "One Piece Toilet Bowl", qty: 20, unit: 560 },
+          { code: "SH-230", name: "Rain Shower Set", qty: 30, unit: 260 }
+        ];
+        const productTotal = items.reduce((sum, item) => sum + item.qty * item.unit, 0);
+        const extra = shipping + tax + other + fee;
+        const denominator = method === "qty" ? items.reduce((sum, item) => sum + item.qty, 0) : productTotal;
+        const rows = items.map((item) => {
+          const total = item.qty * item.unit;
+          const basis = method === "qty" ? item.qty : total;
+          const allocated = (basis / denominator) * extra;
+          const unitLanded = ((total + allocated) * rate) / item.qty;
+          return [item.code, item.name, item.qty, item.unit.toFixed(2), allocated.toFixed(2), unitLanded.toFixed(4)];
+        });
+        return { rows, total: (productTotal + extra) * rate };
+      }
+
+      function table(headers, rows) {
+        return `
+          <div class="card" style="padding:0">
+            <div class="toolbar">
+              <input placeholder="Search table" oninput="filterTable(this)" />
+              <button class="button" onclick="exportCurrentTable()">Export Excel</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+                <tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      function filterTable(input) {
+        const term = input.value.toLowerCase();
+        input.closest(".card").querySelectorAll("tbody tr").forEach((row) => {
+          row.style.display = row.textContent.toLowerCase().includes(term) ? "" : "none";
+        });
+      }
+
+      function exportCurrentTable() {
+        const tableEl = document.querySelector(".page.active table");
+        const rows = [...tableEl.querySelectorAll("tr")].map((row) =>
+          [...row.children].map((cell) => `"${cell.textContent.replaceAll('"', '""')}"`).join(",")
+        );
+        const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "tesvila-export.csv";
+        a.click();
+      }
+
+      function page(title, sub, body) {
+        return `<section class="page active"><h1>${title}</h1><p class="sub">${sub}</p>${body}</section>`;
+      }
+
+      const pages = {
+        Dashboard: () => page(
+          "Dashboard",
+          "Daily view of inventory value, sales, cost, profit, low stock and recent movement.",
+          `<div class="grid metrics">
+            <div class="card"><div class="metric-label">Inventory Value</div><div class="metric-value">$7,944.20</div><div class="metric-helper">WAC x stock</div></div>
+            <div class="card"><div class="metric-label">Today Sales</div><div class="metric-value">$717.22</div><div class="metric-helper">Confirmed invoices</div></div>
+            <div class="card"><div class="metric-label">Monthly Cost</div><div class="metric-value">$369.10</div><div class="metric-helper">Cost snapshots</div></div>
+            <div class="card"><div class="metric-label">Gross Profit</div><div class="metric-value">$288.90</div><div class="metric-helper">Before expenses</div></div>
+          </div><br>${table(["Date", "Type", "Product", "Warehouse", "Qty", "Related"], stockMovements)}`
+        ),
+        Products: () => page(
+          "Products",
+          "Manage product master data, pricing, GST status and stock alerts.",
+          table(["Code", "Name", "Brand", "Category", "Warehouse", "Stock", "WAC", "Dealer", "Retail", "Status"], products)
+        ),
+        Inventory: () => page(
+          "Inventory",
+          "Every stock change creates a movement record. Warehouse stock is updated from movements.",
+          `<div class="grid form-grid">${["Stock In", "Stock Out", "Adjustment", "Transfer", "Return", "Damage"].map((x) => `<button class="button">${x}</button>`).join("")}</div><br>` +
+            table(["Date", "Type", "Product", "Warehouse", "Qty", "Related"], stockMovements)
+        ),
+        Purchasing: () => {
+          const result = calculateLandedCost();
+          return page(
+            "Purchasing",
+            "Record PO currency, payment currency, payment method, fees, landed cost and partial arrival.",
+            `<div class="card">
+              <div class="grid form-grid">
+                <label>Exchange Rate<input id="rate" value="0.185" oninput="render('Purchasing')" /></label>
+                <label>Shipping<input id="shipping" value="850" oninput="render('Purchasing')" /></label>
+                <label>Tax<input id="tax" value="240" oninput="render('Purchasing')" /></label>
+                <label>Payment Fee<input id="fee" value="45" oninput="render('Purchasing')" /></label>
+                <label>Other Cost<input id="other" value="120" oninput="render('Purchasing')" /></label>
+                <label>Payment Method<select><option>Taobao</option><option>International Bank</option><option>TNG</option><option>Bank Transfer</option></select></label>
+                <label>Allocation<select id="allocation" onchange="render('Purchasing')"><option value="value">By Product Value</option><option value="qty">By Quantity</option></select></label>
+                <label>Total Landed<input value="${money(result.total)}" readonly /></label>
+              </div>
+            </div><br>` +
+              table(["Code", "Product", "Qty", "Supplier Unit Cost", "Allocated Fee", "Actual Unit Cost SGD"], result.rows)
+          );
+        },
+        Costing: () => page(
+          "Costing",
+          "Weighted average cost, landed cost, gross profit, margin and markup.",
+          table(["Product", "Qty", "Selling Price", "Cost Snapshot", "Gross Profit", "Margin %", "Markup %"], [
+            ["One Piece Toilet Bowl", 2, 260, 148.25, 223.5, "42.98", "75.38"],
+            ["Rain Shower Set", 1, 138, 72.6, 65.4, "47.39", "90.08"]
+          ])
+        ),
+        Customers: () => page("Customers / Dealers", "Dealer profiles, payment terms, addresses and price levels.", table(["Company", "Contact", "Dealer Type", "Price Level", "Payment Term", "Phone"], customers)),
+        Suppliers: () => page("Suppliers", "Supplier contacts, currencies, payment terms and purchase history.", table(["Supplier", "Contact", "Currency", "Payment Term", "Phone"], suppliers)),
+        Invoices: () => page(
+          "Invoices",
+          "Create invoices, freeze WAC snapshots, calculate GST/profit and auto-generate DO.",
+          `<div class="notice">Invoice TS-0001 confirms cost snapshot. DO will be generated automatically. Stock is not deducted until DO is completed.</div><br>` +
+            table(["Invoice", "Customer", "Date", "Subtotal", "GST 9%", "Total", "Profit", "Status"], [["TS-0001", "ABC Hardware Trading", "2026-06-04", "$658.00", "$59.22", "$717.22", "$288.90", "Confirmed"]])
+        ),
+        "Delivery Orders": () => page(
+          "Delivery Orders",
+          "Partial delivery is allowed. Stock is deducted only when DO status becomes completed.",
+          table(["DO No", "Invoice", "Customer", "Date", "Warehouse", "Qty", "Status"], [
+            ["DO0505202601", "TS-0001", "ABC Hardware Trading", "2026-06-04", "Main Warehouse", 2, "Completed"],
+            ["DO0505202602", "TS-0001", "ABC Hardware Trading", "2026-06-06", "Main Warehouse", 1, "Draft"]
+          ])
+        ),
+        Reports: () => page(
+          "Reports",
+          "Reports are generated from confirmed documents, movements and frozen cost snapshots.",
+          table(["Report", "Source", "Export"], [
+            ["Monthly Sales Report", "Confirmed invoices", "Excel"],
+            ["Inventory Report", "Warehouse stock balances", "Excel"],
+            ["Stock Movement Report", "Stock movements", "Excel"],
+            ["Purchasing Report", "PO, payment and arrivals", "Excel"],
+            ["Profit Report", "Invoice item cost snapshots", "Excel"],
+            ["Low Stock Report", "Product minimum alert", "Excel"]
+          ])
+        ),
+        Settings: () => page(
+          "Settings",
+          "Users, roles, warehouses, number sequences, currencies and payment methods.",
+          table(["Setting", "Value"], [
+            ["GST Rate", "9% exclusive"],
+            ["Invoice Number", "TS-0001 continuous sequence"],
+            ["DO Number", "DOddMMyyyyNN daily sequence"],
+            ["PO Number", "POddMMyyyyNN daily sequence"],
+            ["Roles", "Admin, Staff, Viewer"]
+          ])
+        )
+      };
+
+      function render(name = "Dashboard") {
+        document.querySelector("#content").innerHTML = pages[name]();
+        document.querySelectorAll("nav button").forEach((button) => button.classList.toggle("active", button.textContent === name));
+      }
+
+      document.querySelector("#nav").innerHTML = Object.keys(pages)
+        .map((name) => `<button onclick="render('${name}')">${name}</button>`)
+        .join("");
+      render();
+    </script>
+  </body>
+</html>
