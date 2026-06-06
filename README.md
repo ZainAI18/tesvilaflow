@@ -12,6 +12,7 @@ Desktop-first internal management system for Tesvila daily operations.
 - Landed cost preview API
 - Invoice item profit/GST preview API
 - Seed data skeleton
+- Updated deployment
 
 ## Open the prototype now
 
