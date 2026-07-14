@@ -117,25 +117,25 @@ alter table users enable row level security; alter table customers enable row le
 alter table invoices enable row level security; alter table invoice_items enable row level security; alter table delivery_orders enable row level security;
 alter table delivery_order_items enable row level security; alter table stock_movements enable row level security; alter table document_uploads enable row level security;
 alter table company_settings enable row level security; alter table audit_logs enable row level security;
-create or replace function public.current_role() returns app_role language sql stable security definer set search_path=public as $$ select role from users where id=auth.uid() and active $$;
+create or replace function public.app_current_role() returns app_role language sql stable security definer set search_path=public as $$ select role from users where id=auth.uid() and active $$;
 create policy "authenticated read customers" on customers for select to authenticated using(true);
-create policy "sales manage customers" on customers for all to authenticated using(current_role() in ('admin','sales')) with check(current_role() in ('admin','sales'));
+create policy "sales manage customers" on customers for all to authenticated using(app_current_role() in ('admin','sales')) with check(app_current_role() in ('admin','sales'));
 create policy "authenticated read products" on products for select to authenticated using(true);
-create policy "warehouse manage products" on products for all to authenticated using(current_role() in ('admin','warehouse')) with check(current_role() in ('admin','warehouse'));
+create policy "warehouse manage products" on products for all to authenticated using(app_current_role() in ('admin','warehouse')) with check(app_current_role() in ('admin','warehouse'));
 create policy "authenticated read invoices" on invoices for select to authenticated using(true);
-create policy "sales accounts manage invoices" on invoices for all to authenticated using(current_role() in ('admin','sales','accounts')) with check(current_role() in ('admin','sales','accounts'));
+create policy "sales accounts manage invoices" on invoices for all to authenticated using(app_current_role() in ('admin','sales','accounts')) with check(app_current_role() in ('admin','sales','accounts'));
 create policy "authenticated read invoice items" on invoice_items for select to authenticated using(true);
-create policy "sales accounts manage invoice items" on invoice_items for all to authenticated using(current_role() in ('admin','sales','accounts')) with check(current_role() in ('admin','sales','accounts'));
+create policy "sales accounts manage invoice items" on invoice_items for all to authenticated using(app_current_role() in ('admin','sales','accounts')) with check(app_current_role() in ('admin','sales','accounts'));
 create policy "authenticated read dos" on delivery_orders for select to authenticated using(true);
-create policy "sales warehouse manage dos" on delivery_orders for all to authenticated using(current_role() in ('admin','sales','warehouse')) with check(current_role() in ('admin','sales','warehouse'));
+create policy "sales warehouse manage dos" on delivery_orders for all to authenticated using(app_current_role() in ('admin','sales','warehouse')) with check(app_current_role() in ('admin','sales','warehouse'));
 create policy "authenticated read do items" on delivery_order_items for select to authenticated using(true);
-create policy "sales warehouse manage do items" on delivery_order_items for all to authenticated using(current_role() in ('admin','sales','warehouse')) with check(current_role() in ('admin','sales','warehouse'));
+create policy "sales warehouse manage do items" on delivery_order_items for all to authenticated using(app_current_role() in ('admin','sales','warehouse')) with check(app_current_role() in ('admin','sales','warehouse'));
 create policy "authenticated read movements" on stock_movements for select to authenticated using(true);
-create policy "warehouse insert movements" on stock_movements for insert to authenticated with check(current_role() in ('admin','warehouse'));
-create policy "own uploads" on document_uploads for all to authenticated using(uploaded_by=auth.uid() or current_role()='admin') with check(uploaded_by=auth.uid() or current_role()='admin');
+create policy "warehouse insert movements" on stock_movements for insert to authenticated with check(app_current_role() in ('admin','warehouse'));
+create policy "own uploads" on document_uploads for all to authenticated using(uploaded_by=auth.uid() or app_current_role()='admin') with check(uploaded_by=auth.uid() or app_current_role()='admin');
 create policy "authenticated read settings" on company_settings for select to authenticated using(true);
-create policy "admin settings" on company_settings for all to authenticated using(current_role()='admin') with check(current_role()='admin');
-create policy "admin audit" on audit_logs for select to authenticated using(current_role()='admin');
+create policy "admin settings" on company_settings for all to authenticated using(app_current_role()='admin') with check(app_current_role()='admin');
+create policy "admin audit" on audit_logs for select to authenticated using(app_current_role()='admin');
 
 insert into company_settings(id,legal_name,uen,address,phone,email,gst_rate,invoice_prefix,invoice_terms,do_terms) values(true,'Tesvila Pte Ltd','202312345Z','18 Kaki Bukit Road 3, #04-12, Singapore 415978','+65 6748 3388','accounts@tesvila.com.sg',9,'TS-','Payment is due according to agreed credit terms. Pricing is confidential.','Inspect goods upon delivery. Report discrepancies within 24 hours.');
 
