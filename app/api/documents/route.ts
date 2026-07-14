@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function database(){const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;if(!url||!key)return null;return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}})}
+function database(){const url=process.env.NEXT_PUBLIC_SUPABASE_URL||process.env.SUPABASE_URL,key=process.env.SUPABASE_SECRET_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY;if(!url||!key)return null;return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}})}
 export async function GET(){const db=database();if(!db)return NextResponse.json({error:"Database is not connected."},{status:503});const [{data:invoiceRows,error:invoiceError},{data:doRows,error:doError}]=await Promise.all([
  db.from("invoices").select("id,invoice_number,invoice_date,po_number,gst_rate,deposit,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,contact_person,contact_number),items:invoice_items(id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks),delivery_order:delivery_orders(id,do_number)").is("deleted_at",null).order("created_at",{ascending:false}),
  db.from("delivery_orders").select("id,do_number,delivery_date,delivery_address,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,contact_person,contact_number),items:delivery_order_items(id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)").is("deleted_at",null).order("created_at",{ascending:false})
