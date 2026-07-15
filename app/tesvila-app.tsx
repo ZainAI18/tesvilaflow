@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 import { DocumentProvider, DocumentWorkflow } from "./document-workflow";
 import { ProductManager } from "./product-manager";
+import { CustomerManager } from "./customer-manager";
 import {
   InventoryOperations,
   SalesReport,
@@ -521,7 +522,7 @@ function renderPage(page: NavKey, c: Ctx) {
     case "Dashboard":
       return <Dashboard c={c} />;
     case "Customers":
-      return <Customers c={c} />;
+  return <CustomerManager notify={c.notify} />;
     case "Products":
       return (
         <ProductManager
