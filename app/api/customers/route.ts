@@ -59,9 +59,20 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({
-    customers: data ?? [],
-  });
+  const databaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  "";
+
+const databaseProject =
+  databaseUrl.match(
+    /https:\/\/([^.]+)\.supabase\.co/,
+  )?.[1] || "unknown";
+
+return NextResponse.json({
+  databaseProject,
+  customers: data ?? [],
+});
 }
 
 export async function POST(request: NextRequest) {
