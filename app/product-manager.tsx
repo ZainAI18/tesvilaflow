@@ -90,7 +90,11 @@ export function ProductManager({
   }
 
   useEffect(() => {
+    // Initial API hydration intentionally updates the product manager state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadProducts();
+    // loadProducts is intentionally used only for initial hydration here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function updateForm(field: keyof ProductForm, value: string) {
