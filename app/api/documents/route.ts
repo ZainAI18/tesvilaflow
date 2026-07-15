@@ -1,17 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireApiSession } from "@/lib/auth-session";
+import { createServerDatabase } from "@/lib/supabase-server";
 
 function database() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-    key =
-      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createServerDatabase();
 }
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(
@@ -105,6 +102,8 @@ export async function GET() {
   return NextResponse.json({ invoices, deliveryOrders });
 }
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(
@@ -130,6 +129,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(data, { status: 201 });
 }
 export async function PATCH(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(
@@ -157,6 +158,8 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 export async function DELETE(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 type Product = {
   id: string;
@@ -137,40 +137,6 @@ export function ProductManager({
     }
   }
 
-  function exportCsv() {
-    const headers = [
-      "sku",
-      "product_model",
-      "product_type",
-      "description",
-      "brand",
-      "cost_price",
-      "selling_price",
-      "current_stock",
-      "minimum_stock",
-    ];
-
-    const rows = products.map((product) =>
-      headers.map((header) => {
-        const value = product[header as keyof Product];
-        return `"${String(value ?? "").replaceAll('"', '""')}"`;
-      }),
-    );
-
-    const csv = [
-      headers.join(","),
-      ...rows.map((row) => row.join(",")),
-    ].join("\n");
-
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(
-      new Blob([csv], { type: "text/csv" }),
-    );
-    link.download = "tesvila-products.csv";
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }
-
   const filteredProducts = products.filter((product) =>
     (
       product.product_model +
@@ -191,10 +157,6 @@ export function ProductManager({
         </div>
 
         <div className="row">
-          <button className="btn" onClick={exportCsv}>
-            <Download size={13} /> Export
-          </button>
-
           <button
             className="btn primary"
             onClick={() => setShowForm(true)}
