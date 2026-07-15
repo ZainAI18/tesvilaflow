@@ -460,4 +460,102 @@ export function CustomerManager({
                     onChange={(event) =>
                       updateForm(
                         "email",
+                                                event.target.value,
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Credit terms</label>
+                  <input
+                    className="input"
+                    placeholder="Example: 30 days"
+                    value={form.creditTerms}
+                    onChange={(event) =>
+                      updateForm(
+                        "creditTerms",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </div>
+
+                <div
+                  className="field"
+                  style={{ gridColumn: "span 2" }}
+                >
+                  <label>Billing address</label>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={form.billingAddress}
+                    onChange={(event) =>
+                      updateForm(
+                        "billingAddress",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </div>
+
+                <div
+                  className="field"
+                  style={{ gridColumn: "span 2" }}
+                >
+                  <label>Delivery address</label>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={form.deliveryAddress}
+                    onChange={(event) =>
+                      updateForm(
+                        "deliveryAddress",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <p className="danger-text">
+                  {error}
+                </p>
+              )}
+
+              <div
+                className="row"
+                style={{
+                  justifyContent: "flex-end",
+                  marginTop: 18,
+                }}
+              >
+                <button
+                  className="btn"
+                  onClick={() => setShowForm(false)}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  className="btn primary"
+                  disabled={
+                    saving ||
+                    !form.companyName.trim()
+                  }
+                  onClick={saveCustomer}
+                >
+                  {saving
+                    ? "Saving..."
+                    : "Save customer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
                  
