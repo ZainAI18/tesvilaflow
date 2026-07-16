@@ -695,7 +695,13 @@ function DocumentForm({
                 <input className="input" readOnly value={row.type} />
               </div>
               <div>
-                <input className="input" readOnly value={row.description} />
+                <input
+                  className="input"
+                  value={row.description}
+                  onChange={(e) =>
+                    update(row.id, "description", e.target.value)
+                  }
+                />
                 <input
                   className="input"
                   style={{ marginTop: 4 }}
@@ -1318,7 +1324,14 @@ function RecordModal({
                       <input className="input" disabled value={i.type} />
                     </td>
                     <td>
-                      <input className="input" disabled value={i.description} />
+                      <input
+                        className="input"
+                        disabled={readOnly}
+                        value={i.description}
+                        onChange={(e) =>
+                          setItem(i.id, "description", e.target.value)
+                        }
+                      />
                     </td>
                     <td>
                       <input
