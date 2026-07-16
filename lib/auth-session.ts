@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const SESSION_MAX_AGE = 60 * 60 * 12;
-export type SessionAccess = "full";
+export type SessionAccess = "full" | "warehouse";
 
 export type TesvilaSession = {
   username: string;
@@ -44,12 +44,13 @@ export async function createSessionToken(
   username: string,
   userId: string,
   displayName: string,
+  access: SessionAccess,
 ) {
   const payload: TesvilaSession = {
     username,
     userId,
     displayName,
-    access: "full",
+    access,
     exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE,
   };
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
@@ -70,7 +71,7 @@ export async function verifySessionToken(token?: string | null): Promise<Tesvila
     );
     if (!valid) return null;
     const session = JSON.parse(new TextDecoder().decode(base64UrlDecode(payload))) as TesvilaSession;
-    if (!session.username || !session.userId || !session.displayName || session.access !== "full") return null;
+    if (!session.username || !session.userId || !session.displayName || !["full", "warehouse"].includes(session.access)) return null;
     if (session.exp <= Math.floor(Date.now() / 1000)) return null;
     return session;
   } catch {
@@ -86,10 +87,16 @@ export async function readRequestSession(request: NextRequest) {
   return verifySessionToken(token);
 }
 
-export async function requireApiSession(request: NextRequest) {
+export async function requireApiSession(
+  request: NextRequest,
+  allowedAccess: SessionAccess[] = ["full"],
+) {
   const session = await readRequestSession(request);
   if (!session) {
     return { response: NextResponse.json({ error: "Your session has expired. Please log in again." }, { status: 401 }) };
+  }
+  if (!allowedAccess.includes(session.access)) {
+    return { response: NextResponse.json({ error: "You do not have permission to use this function." }, { status: 403 }) };
   }
   return { session };
 }

@@ -12,7 +12,7 @@ The app uses Supabase as its source of truth. The migrations contain normalized 
 
 ## Authentication setup
 
-Create three users in Supabase Authentication. Enter the authorized passwords directly in Supabase; never commit them to GitHub or expose them in browser environment variables. Set the corresponding server-only email address mappings in `AUTH_EMAIL_ZIJIAN8189`, `AUTH_EMAIL_WEIJIAN8189`, and `AUTH_EMAIL_DASHBOARD`. The visible login remains username-based and all three accounts receive full application access.
+Create three users in Supabase Authentication. Enter the authorized passwords directly in Supabase; never commit them to GitHub or expose them in browser environment variables. Set the corresponding server-only email address mappings in `AUTH_EMAIL_ZIJIAN8189`, `AUTH_EMAIL_WEIJIAN8189`, and `AUTH_EMAIL_DASHBOARD`. The visible login remains username-based. ZiJian8189 and WeiJian8189 receive full application access; account 123456 can access only Dashboard, Inventory Stock, and Stock Movement History.
 
 Each successful login receives a short-lived signed bearer token held only in the current page's JavaScript memory. It is never written to cookies, LocalStorage, SessionStorage, or IndexedDB, so refreshing, closing, or opening a new tab always returns to Login. Each browser tab has independent state, allowing all accounts to work simultaneously without logging one another out. All business-data API routes verify the signed token, and server APIs reject a Supabase URL that does not reference `fnkkeadpkjshsnjmoznl`.
 

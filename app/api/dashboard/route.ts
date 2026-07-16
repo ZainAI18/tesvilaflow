@@ -13,7 +13,7 @@ function monthBounds(month: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireApiSession(request);
+  const auth = await requireApiSession(request, ["full", "warehouse"]);
   if (auth.response) return auth.response;
   try {
     const db = createServerDatabase();
