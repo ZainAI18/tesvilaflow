@@ -44,8 +44,6 @@ import {
   Plus,
   ReceiptText,
   Search,
-  Settings,
-  ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
   Trash2,
@@ -88,9 +86,7 @@ type NavKey =
   | "Delivery Order History"
   | "Monthly Sales Report"
   | "Inventory Stock"
-  | "Stock Movement History"
-  | "User Management"
-  | "Company Settings";
+  | "Stock Movement History";
 const money = (n: number) =>
   new Intl.NumberFormat("en-SG", { style: "currency", currency: "SGD" }).format(
     n,
@@ -381,13 +377,6 @@ const navGroups = [
       ["Stock Movement History", Activity],
     ],
   ],
-  [
-    "Administration",
-    [
-      ["User Management", ShieldCheck],
-      ["Company Settings", Settings],
-    ],
-  ],
 ] as const;
 
 const warehouseNavGroups = [
@@ -604,10 +593,6 @@ function renderPage(page: NavKey, c: Ctx) {
       return <InventoryOperations notify={c.notify} />;
     case "Stock Movement History":
       return <StockMovementHistory />;
-    case "User Management":
-      return <UsersPage c={c} />;
-    case "Company Settings":
-      return <SettingsPage c={c} />;
   }
 }
 function PageHead({
@@ -2335,6 +2320,10 @@ function Extracted({
     </div>
   );
 }
+/* The user-facing User Management and Company Settings pages were removed.
+   Authentication and document company details continue to use their existing
+   backend and centralized document sources. */
+/*
 function UsersPage({ c }: { c: Ctx }) {
   const users = [
     {
@@ -2590,6 +2579,7 @@ function SettingsPage({ c }: { c: Ctx }) {
     </>
   );
 }
+*/
 function exportSheet(name: string, data: any[]) {
   const ws = XLSX.utils.json_to_sheet(data),
     wb = XLSX.utils.book_new();

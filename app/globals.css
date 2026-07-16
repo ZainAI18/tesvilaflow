@@ -570,6 +570,7 @@ textarea.input {
   overflow: auto;
 }
 .document-items-table { min-width: 900px; table-layout: fixed; }
+.document-items-table.partial-delivery { min-width: 1200px; }
 .document-items-table th,
 .document-items-table td,
 .table th,
@@ -581,6 +582,33 @@ textarea.input {
   border-top: 1px solid var(--line);
   align-items: center;
 }
+.edit-row.partial-delivery {
+  grid-template-columns: 34px .9fr 1fr 1fr 1.5fr 76px 92px 76px 96px 90px 80px 90px 60px;
+  min-width: 1330px;
+}
+.delivery-quantity-value {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.delivery-quantity-value.remaining { color: var(--tesvila-blue); }
+.delivery-remaining { color: var(--tesvila-blue); }
+.related-delivery-orders {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px;
+}
+.related-delivery-row {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1.2fr .7fr .7fr auto;
+  margin-top: 9px;
+  padding-top: 9px;
+}
+.related-delivery-row small { color: var(--muted); display: block; margin-top: 2px; }
 .edit-row.header {
   border-top: 0;
   background: var(--tesvila-blue);
@@ -863,6 +891,7 @@ textarea.input {
   .document-method-row.two { grid-template-columns: 1fr; max-width: none; }
   .document-footer-actions { align-items: stretch; flex-direction: column; }
   .document-save-actions { justify-content: flex-start; }
+  .related-delivery-row { grid-template-columns: 1fr 1fr; }
   .invoice-sheet {
     padding: 16px;
   }
