@@ -59,6 +59,7 @@ export type InvoiceRecord = {
   deposit: number;
   paymentStatus: string;
   paymentMethod: string;
+  itemCollectMethod: string;
   collectionMethod: string;
   installationOption: string;
   remarks: string;
@@ -76,6 +77,7 @@ export type DORecord = {
   deliveryAddress: string;
   deliveryContact: string;
   deliveryPhone: string;
+  itemCollectMethod: string;
   items: DocumentItem[];
   status: string;
   remarks: string;
@@ -345,6 +347,22 @@ const date = (value: string) =>
     year: "numeric",
   }).format(new Date(value));
 
+const itemCollectLabel = (value: string) =>
+  value === "delivery"
+    ? "Delivery"
+    : value === "self_collect"
+      ? "Self Collect"
+      : "Not specified";
+
+const paymentMethodLabel = (value: string) =>
+  value === "paynow"
+    ? "PayNow"
+    : value === "cash"
+      ? "Cash"
+      : value === "terms"
+        ? "Terms"
+        : "Not specified";
+
 export function DocumentWorkflow({
   mode,
   onNavigate,
@@ -441,6 +459,8 @@ function DocumentForm({
     [phone, setPhone] = useState(""),
     [po, setPO] = useState(""),
     [remarks, setRemarks] = useState(""),
+    [itemCollectMethod, setItemCollectMethod] = useState(""),
+    [paymentMethod, setPaymentMethod] = useState(""),
     [deposit, setDeposit] = useState(0),
     [clientRequestId] = useState(() => crypto.randomUUID());
   const subtotal = items.reduce(
@@ -483,6 +503,8 @@ function DocumentForm({
   function validationError() {
     if (!customerName.trim()) return "Customer company is required.";
     if (!billingAddress.trim()) return "Billing Address is required.";
+    if (!itemCollectMethod) return "Please select an item collect method.";
+    if (invoice && !paymentMethod) return "Please select a payment method.";
     if (!items.length) return "Add at least one item before saving.";
     for (let index = 0; index < items.length; index++) {
       const item = items[index];
@@ -510,6 +532,7 @@ function DocumentForm({
         deliveryAddress,
         deliveryContact: attention,
         deliveryPhone: phone,
+        itemCollectMethod,
         status: "Scheduled",
       };
       if (invoice) {
@@ -520,7 +543,7 @@ function DocumentForm({
           gstRate: 9,
           deposit,
           paymentStatus: "Issued",
-          paymentMethod: "PayNow / Bank transfer",
+          paymentMethod,
           collectionMethod: "Delivery by Tesvila",
           installationOption: "Supply only",
         });
@@ -613,6 +636,25 @@ function DocumentForm({
             <div className="field"><label>PO number</label><input className="input" value={po} onChange={(e) => setPO(e.target.value)} /></div>
             <div className="field"><label>Deposit</label><input className="input" type="number" min="0" value={deposit} onChange={(e) => setDeposit(Number(e.target.value))} /></div>
           </div>}
+          <div className={`document-method-row ${invoice ? "two" : ""}`}>
+            <div className="field">
+              <label>Item Collect Method *</label>
+              <select className="input" value={itemCollectMethod} onChange={(e) => setItemCollectMethod(e.target.value)}>
+                <option value="">Select method</option>
+                <option value="delivery">Delivery</option>
+                <option value="self_collect">Self Collect</option>
+              </select>
+            </div>
+            {invoice && <div className="field">
+              <label>Payment Method *</label>
+              <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                <option value="">Select payment method</option>
+                <option value="paynow">PayNow</option>
+                <option value="cash">Cash</option>
+                <option value="terms">Terms</option>
+              </select>
+            </div>}
+          </div>
           <div className="field"><label>Remarks</label><textarea className="input" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>
         </div>
         <div className="items-editor">
@@ -1051,6 +1093,8 @@ function RecordModal({
   function editValidationError() {
     if (!draft.customer.name.trim()) return "Customer company is required.";
     if (!draft.customer.billingAddress.trim()) return "Billing Address is required.";
+    if (!draft.itemCollectMethod) return "Please select an item collect method.";
+    if (invoice && !inv.paymentMethod) return "Please select a payment method.";
     for (let index = 0; index < draft.items.length; index++) {
       const item = draft.items[index];
       if (!reference.products.some((product) => product.id === item.productId && product.sku === item.sku)) return `Item ${index + 1}: Please select a valid SKU.`;
@@ -1180,8 +1224,35 @@ function RecordModal({
                 </select>
               )}
             </div>
+            <div className="field">
+              <label>Item Collect Method</label>
+              <select
+                className="input"
+                disabled={readOnly}
+                value={draft.itemCollectMethod || ""}
+                onChange={(e) => setField("itemCollectMethod", e.target.value)}
+              >
+                <option value="">Not specified</option>
+                <option value="delivery">Delivery</option>
+                <option value="self_collect">Self Collect</option>
+              </select>
+            </div>
             {invoice && (
               <>
+                <div className="field">
+                  <label>Payment Method</label>
+                  <select
+                    className="input"
+                    disabled={readOnly}
+                    value={inv.paymentMethod || ""}
+                    onChange={(e) => setField("paymentMethod", e.target.value)}
+                  >
+                    <option value="">Not specified</option>
+                    <option value="paynow">PayNow</option>
+                    <option value="cash">Cash</option>
+                    <option value="terms">Terms</option>
+                  </select>
+                </div>
                 <div className="field">
                   <label>Deposit</label>
                   <input
@@ -1722,8 +1793,8 @@ export async function generateInvoicePdf(inv: InvoiceRecord) {
     MUTED,
   );
   [
-    ["Collection / Delivery", inv.collectionMethod],
-    ["Payment Method", inv.paymentMethod],
+    ["Item Collect Method", itemCollectLabel(inv.itemCollectMethod)],
+    ["Payment Method", paymentMethodLabel(inv.paymentMethod)],
     ["Installation", inv.installationOption],
   ].forEach(([a, b], i) => {
     page.drawText(a, {
@@ -1915,6 +1986,20 @@ export async function generateDOPdf(order: DORecord) {
     size: 7,
     font: bold,
     color: GREEN,
+  });
+  page.drawText("ITEM COLLECT METHOD", {
+    x: 360,
+    y: y - 15,
+    size: 7,
+    font: bold,
+    color: GREEN,
+  });
+  page.drawText(itemCollectLabel(order.itemCollectMethod), {
+    x: 465,
+    y: y - 15,
+    size: 7,
+    font: regular,
+    color: INK,
   });
   drawLines(
     page,

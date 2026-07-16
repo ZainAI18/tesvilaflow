@@ -4,7 +4,7 @@ Invoice, delivery order, sales reporting and inventory management for Tesvila Pt
 
 ## Setup
 
-1. Use Supabase project `fnkkeadpkjshsnjmoznl` and run every SQL file in `supabase/migrations` in filename order. Existing installations must run `202607150001_inventory_reporting.sql`, then `202607160001_document_snapshots_and_issuers.sql`, before deploying this version.
+1. Use Supabase project `fnkkeadpkjshsnjmoznl` and run every SQL file in `supabase/migrations` in filename order. Existing installations must run `202607150001_inventory_reporting.sql`, `202607160001_document_snapshots_and_issuers.sql`, then `202607160002_document_methods.sql` before deploying this version.
 2. Copy `.env.example` to `.env.local` and add the Supabase URL, publishable key, server-side service key, authentication email mappings, and a random `AUTH_SESSION_SECRET` of at least 32 characters.
 3. Run `npm run dev`. Deploy the repository to Vercel and add the same environment variables.
 

@@ -77,6 +77,28 @@ test("document workflow is database-backed, empty by default, and validates rela
   assert.match(migration, /next_do_number/);
 });
 
+test("invoice and delivery-order method dropdowns persist through constrained database wrappers", async () => {
+  const [workflow, documentsApi, migration] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/api/documents/route.ts"),
+    read("supabase/migrations/202607160002_document_methods.sql"),
+  ]);
+  assert.match(workflow, /Item Collect Method/);
+  assert.match(workflow, /Select method/);
+  assert.match(workflow, /Select payment method/);
+  assert.match(workflow, /value="self_collect"/);
+  assert.match(workflow, /value="paynow"/);
+  assert.match(workflow, /Please select an item collect method/);
+  assert.match(workflow, /Please select a payment method/);
+  assert.match(workflow, /itemCollectLabel\(order\.itemCollectMethod\)/);
+  assert.match(workflow, /paymentMethodLabel\(inv\.paymentMethod\)/);
+  assert.match(documentsApi, /create_invoice_with_do_v2/);
+  assert.match(documentsApi, /update_delivery_order_document_v2/);
+  assert.match(migration, /item_collect_method in \('delivery','self_collect'\)/);
+  assert.match(migration, /payment_method in \('paynow','cash','terms'\)/);
+  assert.match(migration, /update public\.delivery_orders[\s\S]*invoice_id = p_id/);
+});
+
 test("dashboard reads real database records and product export is removed", async () => {
   const [dashboardApi, dashboard, productManager] = await Promise.all([
     read("app/api/dashboard/route.ts"),

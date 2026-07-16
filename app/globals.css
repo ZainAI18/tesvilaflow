@@ -497,7 +497,15 @@ textarea.input {
 .document-customer-fields > .document-contact-row { grid-column: 2 / -1; }
 .document-customer-fields > .document-address-grid,
 .document-customer-fields > .document-meta-row,
+.document-customer-fields > .document-method-row,
 .document-customer-fields > .field:last-child { grid-column: 1 / -1; }
+.document-method-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 250px);
+  gap: 14px;
+  max-width: 520px;
+}
+.document-method-row.two { grid-template-columns: repeat(2, minmax(180px, 250px)); }
 .document-address-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -800,7 +808,10 @@ textarea.input {
   .document-customer-fields > .document-contact-row,
   .document-customer-fields > .document-address-grid,
   .document-customer-fields > .document-meta-row,
+  .document-customer-fields > .document-method-row,
   .document-customer-fields > .field:last-child { grid-column: 1; }
+  .document-method-row,
+  .document-method-row.two { grid-template-columns: 1fr; max-width: none; }
   .document-footer-actions { align-items: stretch; flex-direction: column; }
   .invoice-sheet {
     padding: 16px;
