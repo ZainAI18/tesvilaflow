@@ -92,8 +92,8 @@ test("invoice and delivery-order method dropdowns persist through constrained da
   assert.match(workflow, /Please select a payment method/);
   assert.match(workflow, /itemCollectLabel\(order\.itemCollectMethod\)/);
   assert.match(workflow, /paymentMethodLabel\(inv\.paymentMethod\)/);
-  assert.match(documentsApi, /create_invoice_with_do_v3/);
-  assert.match(documentsApi, /update_delivery_order_document_v3/);
+  assert.match(documentsApi, /create_invoice_with_do_v4/);
+  assert.match(documentsApi, /update_delivery_order_document_v4/);
   assert.match(migration, /item_collect_method in \('delivery','self_collect'\)/);
   assert.match(migration, /payment_method in \('paynow','cash','terms'\)/);
   assert.match(migration, /update public\.delivery_orders[\s\S]*invoice_id = p_id/);
@@ -108,11 +108,27 @@ test("item descriptions are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "description", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "description", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /readOnly value=\{row\.description\}/);
-  assert.match(documentsApi, /create_invoice_with_do_v3/);
-  assert.match(documentsApi, /update_invoice_document_v3/);
+  assert.match(documentsApi, /create_invoice_with_do_v4/);
+  assert.match(documentsApi, /update_invoice_document_v4/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
   assert.match(migration, /with ordinality as payload_item/);
+});
+
+test("item brands are editable document snapshots", async () => {
+  const [workflow, documentsApi, migration] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/api/documents/route.ts"),
+    read("supabase/migrations/202607160004_editable_item_brands.sql"),
+  ]);
+  assert.match(workflow, /update\(row\.id, "brand", e\.target\.value\)/);
+  assert.match(workflow, /setItem\(i\.id, "brand", e\.target\.value\)/);
+  assert.doesNotMatch(workflow, /updated\(row\.id, "brand"/);
+  assert.match(documentsApi, /create_invoice_with_do_v4/);
+  assert.match(documentsApi, /update_delivery_order_document_v4/);
+  assert.match(migration, /set brand = coalesce\(payload_item\.value->>'brand', ''\)/);
+  assert.match(migration, /update public\.invoice_items as stored_item/);
+  assert.match(migration, /update public\.delivery_order_items as stored_item/);
 });
 
 test("dashboard reads real database records and product export is removed", async () => {
