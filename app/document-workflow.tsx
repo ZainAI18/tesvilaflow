@@ -1,5 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
+import Image from "next/image";
 import {
   PDFDocument,
   PDFImage,
@@ -22,7 +23,14 @@ import {
   X,
 } from "lucide-react";
 import tesvilaLogo from "../Logo original remove background.png";
+import payNowQr from "../PayNow_QR.png";
 import { authFetch, getClientSession } from "@/lib/client-auth";
+import {
+  buildInvoiceReportData,
+  invoiceReportMoney,
+  paginateInvoiceReportItems,
+} from "@/lib/invoice-report";
+import { createInvoicePdf } from "@/lib/invoice-pdf";
 
 export type DocumentItem = {
   id: string;
@@ -69,7 +77,11 @@ export type InvoiceRecord = {
   poNumber: string;
   items: DocumentItem[];
   gstRate: number;
+  subtotal?: number;
+  gstAmount?: number;
+  grandTotal?: number;
   deposit: number;
+  balance?: number;
   paymentStatus: string;
   paymentMethod: string;
   itemCollectMethod: string;
@@ -140,6 +152,10 @@ type InvoiceDraft = Omit<
   | "doId"
   | "relatedDeliveryOrders"
   | "deliveryStatus"
+  | "subtotal"
+  | "gstAmount"
+  | "grandTotal"
+  | "balance"
   | "createdAt"
 >;
 type DODraft = Omit<DORecord, "id" | "doNumber" | "createdAt">;
@@ -488,15 +504,6 @@ const itemCollectLabel = (value: string) =>
     : value === "self_collect"
       ? "Self Collect"
       : "Not specified";
-
-const paymentMethodLabel = (value: string) =>
-  value === "paynow"
-    ? "PayNow"
-    : value === "cash"
-      ? "Cash"
-      : value === "terms"
-        ? "Terms"
-        : "Not specified";
 
 export function DocumentWorkflow({
   mode,
@@ -1333,6 +1340,119 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
   );
 }
 
+function InvoiceReportPreview({
+  invoice,
+  onClose,
+}: {
+  invoice: InvoiceRecord;
+  onClose: () => void;
+}) {
+  const report = buildInvoiceReportData(invoice);
+  const pages = paginateInvoiceReportItems(report.items);
+  const rowsForPage = (pageItems: typeof report.items, pageIndex: number) => {
+    const rows: Array<(typeof report.items)[number] | undefined> = [...pageItems];
+    if (pageIndex === 0) while (rows.length < 3) rows.push(undefined);
+    return rows;
+  };
+  return (
+    <div className="modal-backdrop invoice-report-backdrop">
+      <div className="invoice-report-shell">
+        <div className="invoice-report-actions no-print">
+          <button className="btn" onClick={onClose}><X size={14} /> Close</button>
+          <button className="btn" onClick={() => window.print()}><FileText size={14} /> Print</button>
+          <button className="btn primary" onClick={() => generateInvoicePdf(invoice)}><Download size={14} /> Download PDF</button>
+        </div>
+        <div className="invoice-report-pages">
+          {pages.map((pageItems, pageIndex) => {
+            const finalPage = pageIndex === pages.length - 1;
+            return (
+              <article className="invoice-report-page" key={`${report.invoiceNumber}-${pageIndex}`}>
+                {pageIndex === 0 ? (
+                  <>
+                    <header className="invoice-report-header">
+                      <div className="invoice-company">
+                        <h1>{report.company.name}</h1>
+                        <div>{report.company.addressLine1}</div>
+                        <div>{report.company.addressLine2}</div>
+                        <div>TEL: {report.company.telephone}</div>
+                        <div>EMAIL: {report.company.email}</div>
+                        <div>Co./GST Reg.No. {report.company.registrationNumber}</div>
+                      </div>
+                      <div className="invoice-title-logo">
+                        <h2>{report.title}</h2>
+                        <Image src={tesvilaLogo} alt="TESVILA" priority />
+                      </div>
+                    </header>
+                    <div className="invoice-report-intro">
+                      <section className="invoice-to">
+                        <b>Invoice To:</b>
+                        <strong>{report.customer.companyName}</strong>
+                        <span>{report.customer.address}</span>
+                        <span>Contact Name: {report.customer.contactName}</span>
+                        <span>Contact Number: {report.customer.contactNumber}</span>
+                      </section>
+                      <table className="invoice-info-table"><tbody>
+                        <tr><th>Invoice No.</th><td><b>{report.invoiceNumber}</b></td></tr>
+                        <tr><th>PO No.</th><td>{report.poNumber}</td></tr>
+                        <tr><th>DO No.</th><td>{report.doNumbers}</td></tr>
+                        <tr><th>Issued Date</th><td>{report.issuedDate}</td></tr>
+                        <tr><th>Delivery Date</th><td>{report.deliveryOrders.length ? report.deliveryOrders.map((order) => <div key={order.number}>{order.number} - {order.date}</div>) : "-"}</td></tr>
+                      </tbody></table>
+                    </div>
+                  </>
+                ) : (
+                  <header className="invoice-continuation-header">
+                    <div><strong>{report.company.name}</strong><span>Invoice No.: {report.invoiceNumber}</span></div>
+                    <div><b>Invoice Continued</b><span>Customer: {report.customer.companyName}</span></div>
+                  </header>
+                )}
+                <h3 className="invoice-items-title">{report.sectionTitle}</h3>
+                <table className="invoice-item-report-table">
+                  <thead><tr><th>No.</th><th>SKU / Item Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th></tr></thead>
+                  <tbody>{rowsForPage(pageItems, pageIndex).map((item, rowIndex) => (
+                    <tr key={item?.id || `blank-${rowIndex}`} className={!item ? "invoice-blank-row" : undefined}>
+                      <td>{item?.number || ""}</td>
+                      <td>{item && <div className="invoice-description"><b>{item.sku}</b><span>{item.model}</span><span>{item.type}</span><span>{item.description}</span></div>}</td>
+                      <td>{item?.quantity ?? ""}</td>
+                      <td>{item ? invoiceReportMoney(item.unitPrice) : ""}</td>
+                      <td>{item ? invoiceReportMoney(item.amount) : ""}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {finalPage && (
+                  <footer className="invoice-report-footer">
+                    <div className="invoice-notice"><b>NOTICE</b><span>{report.notice}</span></div>
+                    <div className="invoice-remarks"><b>Remarks:</b><span>{report.remarks}</span></div>
+                    <div className="invoice-method-totals">
+                      <div className="invoice-methods">
+                        <div><b>ITEM COLLECT METHOD</b><span>{report.itemCollectMethod}</span></div>
+                        <div><b>PAYMENT METHOD</b><span>{report.paymentMethod}</span></div>
+                      </div>
+                      <table className="invoice-total-table"><tbody>
+                        <tr><th>Total</th><td>{invoiceReportMoney(report.totals.subtotal)}</td></tr>
+                        <tr><th>GST {report.totals.gstRate}%</th><td>{invoiceReportMoney(report.totals.gstAmount)}</td></tr>
+                        <tr><th>Grand Total</th><td>{invoiceReportMoney(report.totals.grandTotal)}</td></tr>
+                        <tr><th>Deposit</th><td>{invoiceReportMoney(report.totals.deposit)}</td></tr>
+                        <tr><th>Balance</th><td>{invoiceReportMoney(report.totals.balance)}</td></tr>
+                      </tbody></table>
+                    </div>
+                    <div className="invoice-terms-row">
+                      <div className="invoice-qr"><Image src={payNowQr} alt="PayNow QR" /><b>PayNow UEN: 201604567R</b></div>
+                      <div className="invoice-terms"><b>Terms and Conditions:</b><ol>{report.terms.map((term) => <li key={term}>{term}</li>)}</ol></div>
+                    </div>
+                    <div className="invoice-issued-by">Issued By: {report.issuedBy}</div>
+                  </footer>
+                )}
+                <div className="invoice-page-number">Page {pageIndex + 1} of {pages.length}</div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecordModal({
   record,
   invoice,
@@ -1514,6 +1634,9 @@ function RecordModal({
     } finally {
       setSaving(false);
     }
+  }
+  if (invoice && readOnly) {
+    return <InvoiceReportPreview invoice={inv} onClose={close} />;
   }
   return (
     <>
@@ -2075,32 +2198,6 @@ function companyHeader(
   });
   page.drawText(no, { x: 455, y: 764, size: 10, font: kit.bold, color: GREEN });
 }
-function invoiceTableHead(kit: PdfKit, page: PDFPage, y: number) {
-  page.drawRectangle({
-    x: 36,
-    y: y - 18,
-    width: 523,
-    height: 20,
-    color: GREEN,
-  });
-  [
-    ["SKU", 42],
-    ["PRODUCT MODEL", 105],
-    ["TYPE / DESCRIPTION", 205],
-    ["QTY", 397],
-    ["UNIT PRICE", 430],
-    ["AMOUNT", 505],
-  ].forEach(([t, x]) =>
-    page.drawText(String(t), {
-      x: Number(x),
-      y: y - 12,
-      size: 6.5,
-      font: kit.bold,
-      color: rgb(1, 1, 1),
-    }),
-  );
-  return y - 25;
-}
 function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
   page.drawRectangle({
     x: 36,
@@ -2128,226 +2225,24 @@ function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
 }
 
 export async function generateInvoicePdf(inv: InvoiceRecord) {
-  const kit = await createPdfKit(),
-    { doc, regular, bold } = kit;
-  let page = doc.addPage([595, 842]);
-  kit.pages.push(page);
-  companyHeader(kit, page, "TAX INVOICE", inv.invoiceNumber);
-  page.drawText("BILLING ADDRESS", {
-    x: 36,
-    y: 730,
-    size: 7,
-    font: bold,
-    color: MUTED,
-  });
-  const customerNameLines = wrap(bold, 10, inv.customer.name, 260);
-  drawLines(page, bold, 10, customerNameLines, 36, 715, 12);
-  let customerY = 715 - customerNameLines.length * 12 - 5;
-  const billingLines = wrap(regular, 8, inv.customer.billingAddress, 260);
-  drawLines(page, regular, 8, billingLines, 36, customerY, 10);
-  customerY -= billingLines.length * 10 + 13;
-  page.drawText("DELIVERY ADDRESS", { x: 36, y: customerY, size: 7, font: bold, color: MUTED });
-  customerY -= 14;
-  const deliveryLines = wrap(regular, 8, inv.customer.deliveryAddress, 260);
-  drawLines(page, regular, 8, deliveryLines, 36, customerY, 10);
-  customerY -= deliveryLines.length * 10 + 12;
-  page.drawText(`Attn: ${inv.customer.attention || "—"}  |  Tel: ${inv.customer.phone || "—"}`, { x: 36, y: customerY, size: 8, font: regular, color: MUTED });
-  customerY -= 18;
-  [
-    ["Invoice No.", inv.invoiceNumber],
-    ["PO No.", inv.poNumber || "—"],
-    ["DO No.", inv.doNumber],
-    ["Date", date(inv.invoiceDate)],
-  ].forEach(([a, b], i) => {
-    page.drawText(a, {
-      x: 370,
-      y: 720 - i * 18,
-      size: 7,
-      font: bold,
-      color: MUTED,
-    });
-    page.drawText(b, {
-      x: 445,
-      y: 720 - i * 18,
-      size: 8,
-      font: i ? regular : bold,
-      color: INK,
-    });
-  });
-  let y = invoiceTableHead(kit, page, Math.min(610, customerY));
-  const footerReserve = 250;
-  for (let index = 0; index < inv.items.length; index++) {
-    const item = inv.items[index];
-    const desc = wrap(
-      regular,
-      7.5,
-      `${item.type} — ${item.description} · ${item.brand}${item.remarks ? ` · ${item.remarks}` : ""}`,
-      180,
-    );
-    const h = Math.max(
-      25,
-      Math.max(
-        desc.length,
-        wrap(regular, 7.2, item.sku, 54).length,
-        wrap(bold, 7.2, item.model, 88).length,
-      ) * 9 + 10,
-    );
-    if (y - h < footerReserve) {
-      page = doc.addPage([595, 842]);
-      kit.pages.push(page);
-      companyHeader(kit, page, "TAX INVOICE", inv.invoiceNumber, true);
-      y = invoiceTableHead(kit, page, 735);
-    }
-    drawLines(page, regular, 7.2, wrap(regular, 7.2, item.sku, 54), 42, y - 9, 9);
-    drawLines(page, bold, 7.2, wrap(bold, 7.2, item.model, 88), 105, y - 9, 9);
-    drawLines(page, regular, 7.2, desc, 205, y - 9, 9);
-    page.drawText(String(item.quantity), {
-      x: 397,
-      y: y - 10,
-      size: 8,
-      font: regular,
-    });
-    page.drawText(fmt(item.unitPrice), {
-      x: 430,
-      y: y - 10,
-      size: 7.5,
-      font: regular,
-    });
-    page.drawText(fmt(item.quantity * item.unitPrice - (item.discount || 0)), {
-      x: 503,
-      y: y - 10,
-      size: 7.5,
-      font: bold,
-    });
-    y -= h;
-    line(page, y);
-  }
-  const footerHeight = 225;
-  if (y - footerHeight < 32) {
-    page = doc.addPage([595, 842]);
-    kit.pages.push(page);
-    companyHeader(kit, page, "TAX INVOICE", inv.invoiceNumber, true);
-    y = 730;
-  }
-  const subtotal = inv.items.reduce(
-      (s, i) => s + i.quantity * i.unitPrice - (i.discount || 0),
-      0,
-    ),
-    gst = (subtotal * inv.gstRate) / 100,
-    grand = subtotal + gst,
-    balance = grand - inv.deposit;
-  page.drawText("CONFIDENTIAL PRICING NOTICE", {
-    x: 36,
-    y: y - 16,
-    size: 7,
-    font: bold,
-    color: GREEN,
-  });
-  drawLines(
-    page,
-    regular,
-    7,
-    wrap(
-      regular,
-      7,
-      inv.remarks ||
-        "Pricing is confidential and intended only for the named recipient.",
-      300,
-    ),
-    36,
-    y - 29,
-    9,
-    MUTED,
+  const [logoResponse, qrResponse] = await Promise.all([
+    fetch(tesvilaLogo.src),
+    fetch(payNowQr.src),
+  ]);
+  if (!logoResponse.ok) throw new Error("Tesvila logo could not be loaded");
+  if (!qrResponse.ok) throw new Error("PayNow QR code could not be loaded");
+  const bytes = await createInvoicePdf(
+    buildInvoiceReportData(inv),
+    await logoResponse.arrayBuffer(),
+    await qrResponse.arrayBuffer(),
   );
-  [
-    ["Item Collect Method", itemCollectLabel(inv.itemCollectMethod)],
-    ["Payment Method", paymentMethodLabel(inv.paymentMethod)],
-    ["Installation", inv.installationOption],
-  ].forEach(([a, b], i) => {
-    page.drawText(a, {
-      x: 36,
-      y: y - 54 - i * 15,
-      size: 7,
-      font: bold,
-      color: MUTED,
-    });
-    page.drawText(b, { x: 135, y: y - 54 - i * 15, size: 7.5, font: regular });
-  });
-  [
-    ["Subtotal", subtotal],
-    [`GST (${inv.gstRate}%)`, gst],
-    ["Grand Total", grand],
-    ["Deposit", inv.deposit],
-    ["Balance", balance],
-  ].forEach(([a, b], i) => {
-    const yy = y - 18 - i * 19;
-    page.drawText(String(a), {
-      x: 390,
-      y: yy,
-      size: i === 4 ? 9 : 8,
-      font: i >= 2 ? bold : regular,
-      color: i === 4 ? GREEN : INK,
-    });
-    page.drawText(fmt(Number(b)), {
-      x: 488,
-      y: yy,
-      size: i === 4 ? 9 : 8,
-      font: i >= 2 ? bold : regular,
-      color: i === 4 ? GREEN : INK,
-    });
-  });
-  page.drawRectangle({
-    x: 36,
-    y: y - 200,
-    width: 75,
-    height: 75,
-    borderColor: LINE,
-    borderWidth: 1,
-  });
-  page.drawText("PAYNOW QR", {
-    x: 50,
-    y: y - 164,
-    size: 8,
-    font: bold,
-    color: GREEN,
-  });
-  page.drawText("Upload QR in Settings", {
-    x: 42,
-    y: y - 181,
-    size: 5.5,
-    font: regular,
-    color: MUTED,
-  });
-  page.drawText("TERMS & CONDITIONS", {
-    x: 130,
-    y: y - 126,
-    size: 7,
-    font: bold,
-    color: GREEN,
-  });
-  drawLines(
-    page,
-    regular,
-    6.5,
-    wrap(
-      regular,
-      6.5,
-      "Payment is due according to agreed credit terms. Goods sold are not returnable without written approval. Title remains with Tesvila Pte Ltd until full payment is received.",
-      380,
-    ),
-    130,
-    y - 140,
-    8,
-    MUTED,
+  const anchor = document.createElement("a");
+  anchor.href = URL.createObjectURL(
+    new Blob([bytes as BlobPart], { type: "application/pdf" }),
   );
-  page.drawText(`Issued by: ${inv.createdBy}`, {
-    x: 130,
-    y: y - 192,
-    size: 7,
-    font: bold,
-    color: INK,
-  });
-  await savePdf(kit, `${inv.invoiceNumber}-Invoice.pdf`);
+  anchor.download = `${inv.invoiceNumber}-Invoice.pdf`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(anchor.href), 1000);
 }
 
 export async function generateDOPdf(order: DORecord) {

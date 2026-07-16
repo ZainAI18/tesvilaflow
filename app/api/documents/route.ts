@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     db
       .from("invoices")
       .select(
-        "id,invoice_number,invoice_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_rate,deposit,item_collect_method,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),related_delivery_orders:delivery_orders(id,do_number,delivery_date,status,deleted_at,items:delivery_order_items(invoice_item_id,quantity))",
+        "id,invoice_number,invoice_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_rate,subtotal,gst_amount,grand_total,deposit,balance,item_collect_method,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),related_delivery_orders:delivery_orders(id,do_number,delivery_date,status,deleted_at,items:delivery_order_items(invoice_item_id,quantity))",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
@@ -119,7 +119,11 @@ export async function GET(req: NextRequest) {
     poNumber: x.po_number || "",
     items: invoiceItems,
     gstRate: Number(x.gst_rate),
+    subtotal: x.subtotal == null ? undefined : Number(x.subtotal),
+    gstAmount: x.gst_amount == null ? undefined : Number(x.gst_amount),
+    grandTotal: x.grand_total == null ? undefined : Number(x.grand_total),
     deposit: Number(x.deposit),
+    balance: x.balance == null ? undefined : Number(x.balance),
     paymentStatus: String(x.status)
       .replaceAll("_", " ")
       .replace(/\b\w/g, (c: string) => c.toUpperCase()),
