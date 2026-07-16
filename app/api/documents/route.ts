@@ -22,14 +22,14 @@ export async function GET(req: NextRequest) {
     db
       .from("invoices")
       .select(
-        "id,invoice_number,invoice_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_rate,deposit,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),delivery_order:delivery_orders(id,do_number)",
+        "id,invoice_number,invoice_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_rate,deposit,item_collect_method,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),delivery_order:delivery_orders(id,do_number)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     db
       .from("delivery_orders")
       .select(
-        "id,do_number,delivery_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
+        "id,do_number,delivery_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,item_collect_method,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
@@ -76,7 +76,8 @@ export async function GET(req: NextRequest) {
     paymentStatus: String(x.status)
       .replaceAll("_", " ")
       .replace(/\b\w/g, (c: string) => c.toUpperCase()),
-    paymentMethod: x.payment_method || "",
+    paymentMethod: ["paynow", "cash", "terms"].includes(x.payment_method) ? x.payment_method : "",
+    itemCollectMethod: x.item_collect_method || "",
     collectionMethod: "Delivery by Tesvila",
     installationOption: "Supply only",
     remarks: x.remarks || "",
@@ -94,6 +95,7 @@ export async function GET(req: NextRequest) {
     deliveryAddress: x.delivery_address,
     deliveryContact: x.contact_person || "",
     deliveryPhone: x.contact_number || "",
+    itemCollectMethod: x.item_collect_method || "",
     items: items(x.items),
     status: String(x.status)
       .replaceAll("_", " ")
@@ -125,8 +127,8 @@ export async function POST(req: NextRequest) {
     );
   const fn =
     body.type === "invoice_with_do"
-      ? "create_invoice_with_do"
-      : "create_delivery_order_only";
+      ? "create_invoice_with_do_v2"
+      : "create_delivery_order_only_v2";
   const payload = {
     ...body,
     issuedByUserId: auth.session.userId,
@@ -149,9 +151,9 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const fn =
     body.type === "invoice"
-      ? "update_invoice_document"
+      ? "update_invoice_document_v2"
       : body.type === "delivery_order"
-        ? "update_delivery_order_document"
+        ? "update_delivery_order_document_v2"
         : null;
   if (!fn)
     return NextResponse.json(
