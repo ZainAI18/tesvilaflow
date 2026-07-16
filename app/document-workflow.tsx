@@ -26,6 +26,7 @@ import { authFetch, getClientSession } from "@/lib/client-auth";
 
 export type DocumentItem = {
   id: string;
+  invoiceItemId?: string;
   productId?: string;
   model: string;
   sku: string;
@@ -37,6 +38,16 @@ export type DocumentItem = {
   unitCost?: number;
   discount?: number;
   remarks: string;
+  invoiceQuantity?: number;
+  previouslyDeliveredQuantity?: number;
+  remainingQuantity?: number;
+};
+export type RelatedDeliveryOrder = {
+  id: string;
+  doNumber: string;
+  deliveryDate: string;
+  deliveredQuantity: number;
+  status: string;
 };
 export type CustomerSnapshot = {
   customerId?: string;
@@ -53,6 +64,8 @@ export type InvoiceRecord = {
   customer: CustomerSnapshot;
   doNumber: string;
   doId: string;
+  relatedDeliveryOrders: RelatedDeliveryOrder[];
+  deliveryStatus: "Not Delivered" | "Partially Delivered" | "Fully Delivered";
   poNumber: string;
   items: DocumentItem[];
   gstRate: number;
@@ -121,7 +134,13 @@ type Store = {
 };
 type InvoiceDraft = Omit<
   InvoiceRecord,
-  "id" | "invoiceNumber" | "doNumber" | "doId" | "createdAt"
+  | "id"
+  | "invoiceNumber"
+  | "doNumber"
+  | "doId"
+  | "relatedDeliveryOrders"
+  | "deliveryStatus"
+  | "createdAt"
 >;
 type DODraft = Omit<DORecord, "id" | "doNumber" | "createdAt">;
 
@@ -298,26 +317,19 @@ export function DocumentProvider({
   async function saveInvoice(draft: InvoiceDraft) {
     const data = await request({ type: "invoice_with_do", ...draft });
     const saved = data.invoice as InvoiceRecord;
-    setInvoices((x) => [saved, ...x.filter((r) => r.id !== saved.id)]);
-    setDOs((x) => [
-      data.deliveryOrder,
-      ...x.filter((r) => r.id !== data.deliveryOrder.id),
-    ]);
+    await loadDocuments();
     return saved;
   }
   async function saveInvoiceOnly(draft: InvoiceDraft) {
     const data = await request({ type: "invoice_only", ...draft });
     const saved = data.invoice as InvoiceRecord;
-    setInvoices((current) => [
-      saved,
-      ...current.filter((record) => record.id !== saved.id),
-    ]);
+    await loadDocuments();
     return saved;
   }
   async function saveDO(draft: DODraft) {
     const data = await request({ type: "delivery_order", ...draft });
     const saved = data.deliveryOrder as DORecord;
-    setDOs((x) => [saved, ...x.filter((r) => r.id !== saved.id)]);
+    await loadDocuments();
     return saved;
   }
   async function update(
@@ -329,8 +341,7 @@ export function DocumentProvider({
   }
   async function remove(type: "invoice" | "delivery_order", id: string) {
     await request({ type, id }, "DELETE");
-    if (type === "invoice") setInvoices((x) => x.filter((r) => r.id !== id));
-    else setDOs((x) => x.filter((r) => r.id !== id));
+    await loadDocuments();
   }
   return (
     <DocumentContext.Provider
@@ -367,10 +378,46 @@ const date = (value: string) =>
   }).format(new Date(value));
 
 const invoiceOptionLabel = (record: InvoiceRecord) =>
-  `${record.invoiceNumber} — ${record.customer.name} — ${date(record.invoiceDate)}`;
+  `${record.invoiceNumber} — ${record.customer.name} — ${record.deliveryStatus}`;
 
-const invoiceItemsForDeliveryOrder = (record: InvoiceRecord) =>
-  record.items.map((item) => ({ ...item, id: crypto.randomUUID() }));
+const invoiceItemsForDeliveryOrder = (
+  record: InvoiceRecord,
+  currentOrder?: DORecord,
+) =>
+  record.items
+    .map((item) => {
+      const currentItem = currentOrder?.items.find(
+        (entry) => entry.invoiceItemId === item.id,
+      );
+      const deliveredIncludingCurrent = item.previouslyDeliveredQuantity || 0;
+      const currentQuantity = currentItem?.quantity || 0;
+      const currentCountedQuantity = currentOrder?.status === "Cancelled"
+        ? 0
+        : currentQuantity;
+      const previouslyDeliveredQuantity = Math.max(
+        0,
+        deliveredIncludingCurrent - currentCountedQuantity,
+      );
+      const remainingQuantity = Math.max(
+        0,
+        item.quantity - previouslyDeliveredQuantity,
+      );
+      return {
+        ...(currentItem || item),
+        id: currentItem?.id || crypto.randomUUID(),
+        invoiceItemId: item.id,
+        invoiceQuantity: item.quantity,
+        previouslyDeliveredQuantity,
+        remainingQuantity,
+        quantity: currentItem?.quantity || remainingQuantity,
+        discount: 0,
+      };
+    })
+    .filter((item) =>
+      currentOrder
+        ? currentOrder.items.some((entry) => entry.invoiceItemId === item.invoiceItemId)
+        : item.remainingQuantity! > 0,
+    );
 
 const emptyCustomerSnapshot = (): CustomerSnapshot => ({
   customerId: undefined,
@@ -666,7 +713,15 @@ function DocumentForm({
       const item = items[index];
       const product = reference.products.find((entry) => entry.id === item.productId && entry.sku === item.sku);
       if (!product) return `Item ${index + 1}: Please select a valid SKU.`;
+      if (selectedInvoiceId && !item.invoiceItemId)
+        return `Item ${index + 1}: Please select an item from the linked Invoice.`;
       if (item.quantity <= 0) return `Item ${index + 1}: Quantity must be greater than zero.`;
+      if (
+        selectedInvoiceId &&
+        item.remainingQuantity !== undefined &&
+        item.quantity > item.remainingQuantity
+      )
+        return `Item ${index + 1}: Current Delivery Quantity cannot exceed the Remaining Quantity of ${item.remainingQuantity}.`;
       if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
     }
     return "";
@@ -839,20 +894,27 @@ function DocumentForm({
           <div className="field"><label>Remarks</label><textarea className="input" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>
         </div>
         <div className="items-editor">
-          <div className="edit-row header">
+          <div className={`edit-row header ${selectedInvoiceId ? "partial-delivery" : ""}`}>
             <div></div>
             <div>SKU</div>
             <div>Product model</div>
             <div>Product type</div>
             <div>Description / brand</div>
-            <div>Qty</div>
+            {selectedInvoiceId ? (
+              <>
+                <div>Invoice Qty</div>
+                <div>Previously Delivered</div>
+                <div>Remaining</div>
+                <div>Current Delivery Qty</div>
+              </>
+            ) : <div>Qty</div>}
             <div>Unit price</div>
             <div>Discount</div>
             <div>Amount</div>
             <div>Actions</div>
           </div>
           {items.map((row) => (
-            <div className="edit-row" key={row.id}>
+            <div className={`edit-row ${selectedInvoiceId ? "partial-delivery" : ""}`} key={row.id}>
               <div className="drag">
                 <GripVertical size={14} />
               </div>
@@ -863,6 +925,7 @@ function DocumentForm({
                   placeholder={reference.loading ? "Loading products..." : "Search SKU or model"}
                   value={row.sku}
                   onChange={(e) => chooseProduct(row.id, e.target.value)}
+                  readOnly={!!selectedInvoiceId}
                 />
                 <datalist id={`product-options-${row.id}`}>
                   {reference.products.map((product) => <option key={product.id} value={product.sku}>{product.product_model}</option>)}
@@ -893,11 +956,15 @@ function DocumentForm({
                   }
                 />
               </div>
+              {selectedInvoiceId && <div className="delivery-quantity-value">{row.invoiceQuantity || 0}</div>}
+              {selectedInvoiceId && <div className="delivery-quantity-value">{row.previouslyDeliveredQuantity || 0}</div>}
+              {selectedInvoiceId && <div className="delivery-quantity-value remaining">{row.remainingQuantity || 0}</div>}
               <div>
                 <input
                   className="input"
                   type="number"
                   min="1"
+                  max={selectedInvoiceId ? row.remainingQuantity : undefined}
                   value={row.quantity}
                   onChange={(e) =>
                     update(row.id, "quantity", Number(e.target.value))
@@ -942,9 +1009,12 @@ function DocumentForm({
             </div>
           ))}
         </div>
-        <button className="btn mt" onClick={add}>
+        {!selectedInvoiceId && <button className="btn mt" onClick={add}>
           <Plus size={12} /> Add item
-        </button>
+        </button>}
+        {selectedInvoiceId && !items.length && (
+          <div className="status gray mt">This Invoice is Fully Delivered. There is no remaining quantity available.</div>
+        )}
         {reference.error && <div className="inline-error">{reference.error}</div>}
         {invoice && (
           <div className="totals">
@@ -1063,10 +1133,21 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
     }
   }
   async function remove(record: InvoiceRecord | DORecord) {
+    const inv = record as InvoiceRecord;
+    const delivery = record as DORecord;
+    if (!invoice && delivery.invoiceId) {
+      store.notify(
+        "This Delivery Order is linked to an Invoice and cannot be deleted separately. Delete the related Invoice to remove this Delivery Order.",
+      );
+      return;
+    }
+    const message = invoice && inv.relatedDeliveryOrders.length
+      ? `This Invoice has ${inv.relatedDeliveryOrders.length} related Delivery Orders. Deleting the Invoice will also delete all related Delivery Orders and reverse their stock movements. Continue?`
+      : invoice
+        ? `Delete ${inv.invoiceNumber}? This action is audited.`
+        : "Delete this Delivery Order? Its inventory movement will be reversed.";
     if (
-      !confirm(
-        `Delete ${invoice ? (record as InvoiceRecord).invoiceNumber : (record as DORecord).doNumber}? This action is audited.`,
-      )
+      !confirm(message)
     )
       return;
     try {
@@ -1098,6 +1179,7 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
                   <th>Invoice Date</th>
                   <th>Customer</th>
                   <th>Related DO</th>
+                  <th>Delivery Status</th>
                   <th>PO Number</th>
                   <th>Grand Total</th>
                   <th>Payment Status</th>
@@ -1135,7 +1217,11 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
                       </td>
                       <td>{date(inv.invoiceDate)}</td>
                       <td>{inv.customer.name}</td>
-                      <td>{inv.doNumber}</td>
+                      <td>
+                        <b>{inv.relatedDeliveryOrders.length}</b>
+                        <div className="muted">{inv.doNumber}</div>
+                      </td>
+                      <td><span className={`status ${inv.deliveryStatus === "Partially Delivered" ? "amber" : inv.deliveryStatus === "Fully Delivered" ? "" : "gray"}`}>{inv.deliveryStatus}</span></td>
                       <td>{inv.poNumber || "—"}</td>
                       <td>
                         <b>{fmt(subtotal * (1 + inv.gstRate / 100))}</b>
@@ -1211,12 +1297,22 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
                       >
                         <Copy size={11} /> Duplicate
                       </button>
-                      <button
-                        className="btn sm danger"
-                        onClick={() => remove(record)}
-                      >
-                        <Trash2 size={11} /> Delete
-                      </button>
+                      {!(!invoice && dor.invoiceId) ? (
+                        <button
+                          className="btn sm danger"
+                          onClick={() => remove(record)}
+                        >
+                          <Trash2 size={11} /> Delete
+                        </button>
+                      ) : (
+                        <button
+                          className="btn sm"
+                          disabled
+                          title="This Delivery Order is linked to an Invoice and cannot be deleted separately. Delete the related Invoice to remove this Delivery Order."
+                        >
+                          <Trash2 size={11} /> Linked to Invoice
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1250,12 +1346,19 @@ function RecordModal({
 }) {
   const store = useDocuments();
   const reference = useDocumentReferenceData();
+  const savedDelivery = record as DORecord;
+  const linkedInvoice = !invoice && savedDelivery.invoiceId
+    ? store.invoices.find((entry) => entry.id === savedDelivery.invoiceId)
+    : undefined;
   const [draft, setDraft] = useState<InvoiceRecord | DORecord>(() => ({
       ...record,
       customer: { ...record.customer },
-      items: record.items.map((item) => ({ ...item })),
+      items: linkedInvoice
+        ? invoiceItemsForDeliveryOrder(linkedInvoice, savedDelivery)
+        : record.items.map((item) => ({ ...item })),
     })),
     [saving, setSaving] = useState(false),
+    [relatedView, setRelatedView] = useState<DORecord | null>(null),
     [selectedInvoiceQuery, setSelectedInvoiceQuery] = useState(() => {
       if (invoice) return "";
       const linkedNumber = (record as DORecord).invoiceNumber;
@@ -1377,7 +1480,16 @@ function RecordModal({
     for (let index = 0; index < draft.items.length; index++) {
       const item = draft.items[index];
       if (!reference.products.some((product) => product.id === item.productId && product.sku === item.sku)) return `Item ${index + 1}: Please select a valid SKU.`;
+      if (!invoice && delivery.invoiceId && !item.invoiceItemId)
+        return `Item ${index + 1}: Please select an item from the linked Invoice.`;
       if (item.quantity <= 0) return `Item ${index + 1}: Quantity must be greater than zero.`;
+      if (
+        !invoice &&
+        delivery.invoiceId &&
+        item.remainingQuantity !== undefined &&
+        item.quantity > item.remainingQuantity
+      )
+        return `Item ${index + 1}: Current Delivery Quantity cannot exceed the Remaining Quantity of ${item.remainingQuantity}.`;
       if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
     }
     return "";
@@ -1404,6 +1516,7 @@ function RecordModal({
     }
   }
   return (
+    <>
     <div className="modal-backdrop">
       <div className="modal document-modal">
         <div className="modal-head">
@@ -1579,15 +1692,43 @@ function RecordModal({
               </>
             )}
           </div>
+          {invoice && (
+            <div className="related-delivery-orders mt">
+              <div className="row between">
+                <b>Related Delivery Orders</b>
+                <span className={`status ${inv.deliveryStatus === "Partially Delivered" ? "amber" : inv.deliveryStatus === "Fully Delivered" ? "" : "gray"}`}>{inv.deliveryStatus}</span>
+              </div>
+              {!inv.relatedDeliveryOrders.length ? (
+                <p className="muted">No Delivery Orders have been created for this Invoice.</p>
+              ) : inv.relatedDeliveryOrders.map((related) => {
+                const relatedRecord = store.deliveryOrders.find((entry) => entry.id === related.id);
+                return (
+                  <div className="related-delivery-row" key={related.id}>
+                    <div><b>{related.doNumber}</b><small>{date(related.deliveryDate)}</small></div>
+                    <span>{related.deliveredQuantity} units</span>
+                    <span className="status gray">{related.status}</span>
+                    <button className="btn sm" disabled={!relatedRecord} onClick={() => relatedRecord && setRelatedView(relatedRecord)}><Eye size={11} /> View</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="table-wrap mt document-items-table-wrap">
-            <table className="table document-items-table">
+            <table className={`table document-items-table ${!invoice && delivery.invoiceId ? "partial-delivery" : ""}`}>
               <thead>
                 <tr>
                   <th>SKU</th>
                   <th>Product Model</th>
                   <th>Product Type</th>
                   <th>Description</th>
-                  <th>Qty</th>
+                  {!invoice && delivery.invoiceId ? (
+                    <>
+                      <th>Invoice Qty</th>
+                      <th>Previously Delivered</th>
+                      <th>Remaining</th>
+                      <th>Current Delivery Qty</th>
+                    </>
+                  ) : <th>Qty</th>}
                   <th>Price</th>
                   {invoice && <th>Discount</th>}
                   <th>Amount</th>
@@ -1607,6 +1748,9 @@ function RecordModal({
                       />
                       <datalist id={`edit-product-options-${i.id}`}>{reference.products.map((product) => <option key={product.id} value={product.sku}>{product.product_model}</option>)}</datalist>
                     </td>
+                    {!invoice && delivery.invoiceId && <td><b>{i.invoiceQuantity || 0}</b></td>}
+                    {!invoice && delivery.invoiceId && <td>{i.previouslyDeliveredQuantity || 0}</td>}
+                    {!invoice && delivery.invoiceId && <td><b className="delivery-remaining">{i.remainingQuantity || 0}</b></td>}
                     <td>
                       <input className="input" disabled value={i.model} />
                     </td>
@@ -1638,6 +1782,7 @@ function RecordModal({
                         className="input"
                         type="number"
                         min="1"
+                        max={!invoice && delivery.invoiceId ? i.remainingQuantity : undefined}
                         disabled={readOnly}
                         value={i.quantity}
                         onChange={(e) =>
@@ -1700,7 +1845,7 @@ function RecordModal({
               </tbody>
             </table>
           </div>
-          {!readOnly && (
+          {!readOnly && !(delivery.invoiceId && !invoice) && (
             <button
               className="btn mt"
               onClick={() =>
@@ -1791,6 +1936,15 @@ function RecordModal({
         </div>
       </div>
     </div>
+    {relatedView && (
+      <RecordModal
+        record={relatedView}
+        invoice={false}
+        mode="view"
+        close={() => setRelatedView(null)}
+      />
+    )}
+    </>
   );
 }
 

@@ -4,11 +4,13 @@ Invoice, delivery order, sales reporting and inventory management for Tesvila Pt
 
 ## Setup
 
-1. Use Supabase project `fnkkeadpkjshsnjmoznl` and run every SQL file in `supabase/migrations` in filename order. Existing installations must run `202607150001_inventory_reporting.sql`, `202607160001_document_snapshots_and_issuers.sql`, `202607160002_document_methods.sql`, `202607160003_editable_item_descriptions.sql`, `202607160004_editable_item_brands.sql`, `202607160005_delivery_order_invoice_link.sql`, then `202607160006_save_invoice_only.sql` before deploying this version.
+1. Use Supabase project `fnkkeadpkjshsnjmoznl` and run every SQL file in `supabase/migrations` in filename order. Existing installations must run `202607150001_inventory_reporting.sql`, `202607160001_document_snapshots_and_issuers.sql`, `202607160002_document_methods.sql`, `202607160003_editable_item_descriptions.sql`, `202607160004_editable_item_brands.sql`, `202607160005_delivery_order_invoice_link.sql`, `202607160006_save_invoice_only.sql`, then `202607160007_invoice_partial_deliveries.sql` before deploying this version.
 2. Copy `.env.example` to `.env.local` and add the Supabase URL, publishable key, server-side service key, authentication email mappings, and a random `AUTH_SESSION_SECRET` of at least 32 characters.
 3. Run `npm run dev`. Deploy the repository to Vercel and add the same environment variables.
 
 The app uses Supabase as its source of truth. The migrations contain normalized tables, constraints, RLS policies, atomic numbering, transactional invoice-plus-DO creation and exactly-once delivery-order inventory posting.
+
+Invoices support multiple linked Delivery Orders with item-level partial-delivery controls. Linked Delivery Orders are removed only through their parent Invoice so all active inventory movements are reversed atomically. The User Management and Company Settings interfaces are intentionally not exposed; authentication accounts and centralized company document details remain unchanged.
 
 ## Authentication setup
 
