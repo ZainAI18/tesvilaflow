@@ -108,6 +108,7 @@ type ProductOption = {
 type Store = {
   invoices: InvoiceRecord[];
   deliveryOrders: DORecord[];
+  documentsLoading: boolean;
   saveInvoice: (draft: InvoiceDraft) => Promise<InvoiceRecord>;
   saveDO: (draft: DODraft) => Promise<DORecord>;
   update: (
@@ -257,17 +258,23 @@ export function DocumentProvider({
   notify?: (s: string) => void;
 }) {
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]),
-    [deliveryOrders, setDOs] = useState<DORecord[]>([]);
+    [deliveryOrders, setDOs] = useState<DORecord[]>([]),
+    [documentsLoading, setDocumentsLoading] = useState(true);
   const message =
     notify ||
     ((s: string) =>
       window.dispatchEvent(new CustomEvent("tesvila-toast", { detail: s })));
   async function loadDocuments() {
-    const response = await authFetch("/api/documents", { cache: "no-store" });
-    if (!response.ok) return;
-    const data = await response.json();
-    setInvoices(data.invoices || []);
-    setDOs(data.deliveryOrders || []);
+    setDocumentsLoading(true);
+    try {
+      const response = await authFetch("/api/documents", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      setInvoices(data.invoices || []);
+      setDOs(data.deliveryOrders || []);
+    } finally {
+      setDocumentsLoading(false);
+    }
   }
   useEffect(() => {
     // Initial remote hydration intentionally updates this external-store state.
@@ -320,6 +327,7 @@ export function DocumentProvider({
       value={{
         invoices,
         deliveryOrders,
+        documentsLoading,
         saveInvoice,
         saveDO,
         update,
@@ -346,6 +354,75 @@ const date = (value: string) =>
     month: "short",
     year: "numeric",
   }).format(new Date(value));
+
+const invoiceOptionLabel = (record: InvoiceRecord) =>
+  `${record.invoiceNumber} — ${record.customer.name} — ${date(record.invoiceDate)}`;
+
+const invoiceItemsForDeliveryOrder = (record: InvoiceRecord) =>
+  record.items.map((item) => ({ ...item, id: crypto.randomUUID() }));
+
+const emptyCustomerSnapshot = (): CustomerSnapshot => ({
+  customerId: undefined,
+  name: "",
+  billingAddress: "",
+  deliveryAddress: "",
+  attention: "",
+  phone: "",
+});
+
+function InvoiceSelector({
+  id,
+  invoices,
+  value,
+  selectedId,
+  loading,
+  disabled = false,
+  onChange,
+  onClear,
+  onBlur,
+}: {
+  id: string;
+  invoices: InvoiceRecord[];
+  value: string;
+  selectedId?: string;
+  loading: boolean;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+  onClear: () => void;
+  onBlur?: () => void;
+}) {
+  const listId = `${id}-options`;
+  return (
+    <div className="field selected-invoice-field">
+      <label>Selected Invoice</label>
+      <div className="selected-invoice-control">
+        <input
+          id={id}
+          className="input"
+          list={disabled ? undefined : listId}
+          disabled={disabled}
+          placeholder={loading ? "Loading invoices..." : "Select invoice, if applicable"}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          autoComplete="off"
+        />
+        {!disabled && (selectedId || value) && (
+          <button type="button" className="selected-invoice-clear" onClick={onClear} aria-label="Clear selected invoice">
+            <X size={13} />
+          </button>
+        )}
+      </div>
+      <datalist id={listId}>
+        {invoices.map((entry) => (
+          <option key={entry.id} value={invoiceOptionLabel(entry)} />
+        ))}
+      </datalist>
+      {!loading && !invoices.length && <small className="field-help">No saved invoices found.</small>}
+      {!loading && invoices.length > 0 && !disabled && <small className="field-help">Search by invoice number or customer company. Optional.</small>}
+    </div>
+  );
+}
 
 const itemCollectLabel = (value: string) =>
   value === "delivery"
@@ -461,6 +538,9 @@ function DocumentForm({
     [remarks, setRemarks] = useState(""),
     [itemCollectMethod, setItemCollectMethod] = useState(""),
     [paymentMethod, setPaymentMethod] = useState(""),
+    [selectedInvoiceId, setSelectedInvoiceId] = useState(""),
+    [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState(""),
+    [selectedInvoiceQuery, setSelectedInvoiceQuery] = useState(""),
     [deposit, setDeposit] = useState(0),
     [clientRequestId] = useState(() => crypto.randomUUID());
   const subtotal = items.reduce(
@@ -478,6 +558,71 @@ function DocumentForm({
       rows.map((r) => (r.id === id ? { ...r, [key]: value } : r)),
     );
   const add = () => setItems((rows) => [...rows, emptyItem()]);
+  function applySelectedInvoice(selected: InvoiceRecord) {
+    setSelectedInvoiceId(selected.id);
+    setSelectedInvoiceNumber(selected.invoiceNumber);
+    setSelectedInvoiceQuery(invoiceOptionLabel(selected));
+    setCustomerId(selected.customer.customerId || "");
+    setCustomerName(selected.customer.name);
+    setAttention(selected.customer.attention);
+    setPhone(selected.customer.phone);
+    setBillingAddress(selected.customer.billingAddress);
+    setDeliveryAddress(selected.customer.deliveryAddress);
+    setItemCollectMethod(selected.itemCollectMethod || "");
+    setItems(invoiceItemsForDeliveryOrder(selected));
+  }
+  function clearDeliveryOrderDetails() {
+    setCustomerId("");
+    setCustomerName("");
+    setAttention("");
+    setPhone("");
+    setBillingAddress("");
+    setDeliveryAddress("");
+    setItemCollectMethod("");
+    setItems([]);
+  }
+  function clearSelectedInvoice() {
+    if (!selectedInvoiceId) {
+      setSelectedInvoiceQuery("");
+      return;
+    }
+    const keepDetails = window.confirm(
+      "The Invoice link will be removed. Select OK to keep the current customer and item details, or Cancel to clear them.",
+    );
+    setSelectedInvoiceId("");
+    setSelectedInvoiceNumber("");
+    setSelectedInvoiceQuery("");
+    if (!keepDetails) clearDeliveryOrderDetails();
+  }
+  function chooseInvoice(value: string) {
+    setSelectedInvoiceQuery(value);
+    if (!value.trim()) {
+      clearSelectedInvoice();
+      return;
+    }
+    const normalized = value.trim().toLowerCase();
+    const selected = store.invoices.find(
+      (entry) =>
+        entry.invoiceNumber.toLowerCase() === normalized ||
+        invoiceOptionLabel(entry).toLowerCase() === normalized,
+    );
+    if (!selected) return;
+    if (selected.id === selectedInvoiceId) {
+      setSelectedInvoiceQuery(invoiceOptionLabel(selected));
+      return;
+    }
+    if (
+      (selectedInvoiceId || customerName.trim() || items.length > 0) &&
+      !window.confirm(
+        "Changing the selected Invoice will replace the current customer and item details. Continue?",
+      )
+    ) {
+      const current = store.invoices.find((entry) => entry.id === selectedInvoiceId);
+      setSelectedInvoiceQuery(current ? invoiceOptionLabel(current) : "");
+      return;
+    }
+    applySelectedInvoice(selected);
+  }
   function chooseCustomer(value: string) {
     const match = reference.customers.find((entry) => entry.company_name.toLowerCase() === value.trim().toLowerCase());
     setCustomerName(value);
@@ -552,7 +697,11 @@ function DocumentForm({
         );
         onNavigate?.("Invoice History");
       } else {
-        const saved = await store.saveDO({ ...common, invoiceNumber: "—" });
+        const saved = await store.saveDO({
+          ...common,
+          invoiceId: selectedInvoiceId || undefined,
+          invoiceNumber: selectedInvoiceNumber,
+        });
         store.notify(
           `${saved.doNumber} saved. PDF is available from the Delivery Order Table.`,
         );
@@ -595,6 +744,22 @@ function DocumentForm({
             <p>Number assigned atomically on save</p>
           </div>
         </div>
+        {!invoice && (
+          <InvoiceSelector
+            id="delivery-order-selected-invoice"
+            invoices={store.invoices}
+            value={selectedInvoiceQuery}
+            selectedId={selectedInvoiceId}
+            loading={store.documentsLoading}
+            onChange={chooseInvoice}
+            onClear={clearSelectedInvoice}
+            onBlur={() => {
+              if (!selectedInvoiceId) return;
+              const current = store.invoices.find((entry) => entry.id === selectedInvoiceId);
+              setSelectedInvoiceQuery(current ? invoiceOptionLabel(current) : selectedInvoiceNumber);
+            }}
+          />
+        )}
         <div className="document-customer-fields">
           <div className="field customer-combobox">
             <label>Customer company *</label>
@@ -1060,6 +1225,15 @@ function RecordModal({
       items: record.items.map((item) => ({ ...item })),
     })),
     [saving, setSaving] = useState(false),
+    [selectedInvoiceQuery, setSelectedInvoiceQuery] = useState(() => {
+      if (invoice) return "";
+      const linkedNumber = (record as DORecord).invoiceNumber;
+      return linkedNumber && linkedNumber !== "—"
+        ? linkedNumber
+        : mode === "view"
+          ? "No linked invoice"
+          : "";
+    }),
     readOnly = mode === "view";
   const inv = draft as InvoiceRecord,
     delivery = draft as DORecord;
@@ -1098,6 +1272,71 @@ function RecordModal({
       ...current,
       items: current.items.map((item) => item.id === id ? itemFromProduct(item, product, value) : item),
     }) as InvoiceRecord | DORecord);
+  };
+  const clearModalInvoice = () => {
+    if (!delivery.invoiceId) {
+      setSelectedInvoiceQuery("");
+      return;
+    }
+    const keepDetails = window.confirm(
+      "The Invoice link will be removed. Select OK to keep the current customer and item details, or Cancel to clear them.",
+    );
+    setSelectedInvoiceQuery("");
+    setDraft((current) => ({
+      ...current,
+      invoiceId: undefined,
+      invoiceNumber: "—",
+      ...(keepDetails
+        ? {}
+        : {
+            customer: emptyCustomerSnapshot(),
+            deliveryAddress: "",
+            deliveryContact: "",
+            deliveryPhone: "",
+            itemCollectMethod: "",
+            items: [],
+          }),
+    }) as DORecord);
+  };
+  const chooseModalInvoice = (value: string) => {
+    setSelectedInvoiceQuery(value);
+    if (!value.trim()) {
+      clearModalInvoice();
+      return;
+    }
+    const normalized = value.trim().toLowerCase();
+    const selected = store.invoices.find(
+      (entry) =>
+        entry.invoiceNumber.toLowerCase() === normalized ||
+        invoiceOptionLabel(entry).toLowerCase() === normalized,
+    );
+    if (!selected) return;
+    if (selected.id === delivery.invoiceId) {
+      setSelectedInvoiceQuery(invoiceOptionLabel(selected));
+      return;
+    }
+    if (
+      (delivery.invoiceId || draft.customer.name.trim() || draft.items.length > 0) &&
+      !window.confirm(
+        "Changing the selected Invoice will replace the current customer and item details. Continue?",
+      )
+    ) {
+      const current = store.invoices.find((entry) => entry.id === delivery.invoiceId);
+      setSelectedInvoiceQuery(current ? invoiceOptionLabel(current) : delivery.invoiceNumber || "");
+      return;
+    }
+    setSelectedInvoiceQuery(invoiceOptionLabel(selected));
+    setDraft((current) => ({
+      ...current,
+      invoiceId: selected.id,
+      invoiceNumber: selected.invoiceNumber,
+      customer: { ...selected.customer },
+      deliveryAddress: selected.customer.deliveryAddress,
+      deliveryContact: selected.customer.attention,
+      deliveryPhone: selected.customer.phone,
+      itemCollectMethod: selected.itemCollectMethod || "",
+      items: invoiceItemsForDeliveryOrder(selected),
+    }) as DORecord);
   };
   function editValidationError() {
     if (!draft.customer.name.trim()) return "Customer company is required.";
@@ -1150,6 +1389,23 @@ function RecordModal({
           </button>
         </div>
         <div className="modal-body">
+          {!invoice && (
+            <InvoiceSelector
+              id={`edit-selected-invoice-${record.id}`}
+              invoices={store.invoices}
+              value={selectedInvoiceQuery}
+              selectedId={delivery.invoiceId}
+              loading={store.documentsLoading}
+              disabled={readOnly}
+              onChange={chooseModalInvoice}
+              onClear={clearModalInvoice}
+              onBlur={() => {
+                if (!delivery.invoiceId) return;
+                const current = store.invoices.find((entry) => entry.id === delivery.invoiceId);
+                setSelectedInvoiceQuery(current ? invoiceOptionLabel(current) : delivery.invoiceNumber);
+              }}
+            />
+          )}
           <div className="grid-2">
             <div className="field">
               <label>Customer</label>
@@ -1292,8 +1548,8 @@ function RecordModal({
               </>
             )}
           </div>
-          <div className="table-wrap mt">
-            <table className="table">
+          <div className="table-wrap mt document-items-table-wrap">
+            <table className="table document-items-table">
               <thead>
                 <tr>
                   <th>SKU</th>
