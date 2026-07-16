@@ -127,8 +127,8 @@ export async function POST(req: NextRequest) {
     );
   const fn =
     body.type === "invoice_with_do"
-      ? "create_invoice_with_do_v3"
-      : "create_delivery_order_only_v3";
+      ? "create_invoice_with_do_v4"
+      : "create_delivery_order_only_v4";
   const payload = {
     ...body,
     issuedByUserId: auth.session.userId,
@@ -151,9 +151,9 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const fn =
     body.type === "invoice"
-      ? "update_invoice_document_v3"
+      ? "update_invoice_document_v4"
       : body.type === "delivery_order"
-        ? "update_delivery_order_document_v3"
+        ? "update_delivery_order_document_v4"
         : null;
   if (!fn)
     return NextResponse.json(

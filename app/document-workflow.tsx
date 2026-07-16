@@ -708,7 +708,7 @@ function DocumentForm({
                   value={row.brand}
                   placeholder="Brand"
                   onChange={(e) =>
-                    updated(row.id, "brand", e.target.value)
+                    update(row.id, "brand", e.target.value)
                   }
                 />
               </div>
@@ -1335,16 +1335,14 @@ function RecordModal({
                           setItem(i.id, "description", e.target.value)
                         }
                       />
-                    </td>
-                    <td>
                       <input
                         className="input"
-                        style={{marginTop:4}}
+                        style={{ marginTop: 4 }}
                         disabled={readOnly}
                         value={i.brand}
                         placeholder="Brand"
                         onChange={(e) =>
-                          setItem(i.id, "description", e.target.value)
+                          setItem(i.id, "brand", e.target.value)
                         }
                       />
                     </td>
