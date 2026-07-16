@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
+import { authFetch } from "@/lib/client-auth";
 
 type Product = {
   id: string;
@@ -67,7 +68,7 @@ export function ProductManager({
     setLoading(true);
 
     try {
-      const response = await fetch("/api/products", {
+      const response = await authFetch("/api/products", {
         cache: "no-store",
       });
 
@@ -108,7 +109,7 @@ export function ProductManager({
     setSaving(true);
 
     try {
-      const response = await fetch("/api/products", {
+      const response = await authFetch("/api/products", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

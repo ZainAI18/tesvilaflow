@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     db
       .from("invoices")
       .select(
-        "id,invoice_number,invoice_date,subtotal,gst_amount,grand_total,status,customer:customers(company_name),items:invoice_items(quantity,unit_price,unit_cost,discount_amount,product:products(id,sku,product_model,product_type))",
+        "id,invoice_number,invoice_date,customer_company_name,subtotal,gst_amount,grand_total,status,customer:customers(company_name),items:invoice_items(quantity,unit_price,unit_cost,discount_amount,product:products(id,sku,product_model,product_type))",
       )
       .is("deleted_at", null)
       .gte("invoice_date", start)
@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
     );
     return {
       ...invoice,
+      customer: { company_name: invoice.customer_company_name || invoice.customer?.company_name || "" },
       net_sales: netSales,
       cost,
       gross_profit: netSales - cost,

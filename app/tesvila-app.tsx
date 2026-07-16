@@ -23,7 +23,6 @@ import {
   AlertTriangle,
   Archive,
   BarChart3,
-  Bell,
   Boxes,
   Check,
   ChevronDown,
@@ -60,6 +59,8 @@ import { ProductManager } from "./product-manager";
 import { CustomerManager } from "./customer-manager";
 import { DashboardManager } from "./dashboard-manager";
 import tesvilaLogo from "../Logo original remove background.png";
+import { LoginScreen } from "./login/login-screen";
+import { setClientSession, type ClientSession } from "@/lib/client-auth";
 import {
   InventoryOperations,
   SalesReport,
@@ -389,11 +390,10 @@ const navGroups = [
   ],
 ] as const;
 
-function TesvilaShell() {
+function TesvilaShell({ session, onLogout }: { session: ClientSession; onLogout: () => void }) {
   const [page, setPage] = useState<NavKey>("Dashboard");
   const [menu, setMenu] = useState(false);
   const [accountMenu, setAccountMenu] = useState(false);
-  const [session, setSession] = useState<{ username: string; access: "full" | "dashboard" } | null>(null);
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<string | null>(null);
   const [gst, setGst] = useState(9);
@@ -407,22 +407,6 @@ function TesvilaShell() {
     window.addEventListener("tesvila-toast", handle);
     return () => window.removeEventListener("tesvila-toast", handle);
   }, []);
-  useEffect(() => {
-    fetch("/api/auth/session", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) {
-          window.location.replace("/login");
-          return null;
-        }
-        return response.json();
-      })
-      .then((result) => result && setSession(result))
-      .catch(() => window.location.replace("/login"));
-  }, []);
-  async function logOut() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.replace("/login");
-  }
   const title = page;
   const today = new Intl.DateTimeFormat("en-SG", {
     weekday: "long",
@@ -430,8 +414,8 @@ function TesvilaShell() {
     month: "long",
     year: "numeric",
   }).format(new Date());
-  const visibleNavGroups = session?.access === "dashboard" ? [navGroups[0]] : navGroups;
-  const initials = session?.username.slice(0, 2).toUpperCase() || "TV";
+  const visibleNavGroups = navGroups;
+  const initials = session.username.slice(0, 2).toUpperCase();
   return (
     <div className="shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
@@ -463,12 +447,12 @@ function TesvilaShell() {
           ))}
         </div>
         <div className="profile-wrap">
-        {accountMenu && <div className="account-menu"><button onClick={() => void logOut()}><LogOut size={14} /> Log Out</button></div>}
+        {accountMenu && <div className="account-menu"><button onClick={onLogout}><LogOut size={14} /> Log Out</button></div>}
         <button className="profile" onClick={() => setAccountMenu((value) => !value)} aria-expanded={accountMenu}>
           <div className="avatar">{initials}</div>
           <div>
-            <b>{session?.username || "Loading..."}</b>
-            <span>{session?.access === "dashboard" ? "Dashboard viewer" : "Administrator"}</span>
+            <b>{session.username}</b>
+            <span>Administrator</span>
           </div>
           <ChevronDown size={13} />
         </button>
@@ -490,17 +474,11 @@ function TesvilaShell() {
           </div>
           <div className="top-actions">
             <button
-              className="icon-btn"
-              onClick={() => notify("You’re all caught up")}
-            >
-              <Bell size={16} />
-            </button>
-            {session?.access !== "dashboard" && <button
               className="btn primary"
               onClick={() => setPage("Create Invoice & DO")}
             >
               <Plus size={14} /> Invoice
-            </button>}
+            </button>
           </div>
         </header>
         <div className="content">
@@ -533,9 +511,24 @@ function TesvilaShell() {
   );
 }
 export default function TesvilaApp() {
+  const [session, setSession] = useState<ClientSession | null>(null);
+  useEffect(() => {
+    const expire = () => setSession(null);
+    window.addEventListener("tesvila-session-expired", expire);
+    return () => window.removeEventListener("tesvila-session-expired", expire);
+  }, []);
+  function login(nextSession: ClientSession) {
+    setClientSession(nextSession);
+    setSession(nextSession);
+  }
+  function logout() {
+    setClientSession(null);
+    setSession(null);
+  }
+  if (!session) return <LoginScreen onLogin={login} />;
   return (
     <DocumentProvider>
-      <TesvilaShell />
+      <TesvilaShell session={session} onLogout={logout} />
     </DocumentProvider>
   );
 }

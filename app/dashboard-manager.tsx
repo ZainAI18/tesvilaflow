@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CircleDollarSign, ReceiptText, TrendingUp } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { authFetch } from "@/lib/client-auth";
 
 type DashboardData = {
   selectedMonth: string;
@@ -45,10 +46,10 @@ export function DashboardManager() {
     setError("");
     try {
       const query = selectedMonth ? `?month=${encodeURIComponent(selectedMonth)}` : "";
-      const response = await fetch(`/api/dashboard${query}`, { cache: "no-store" });
+      const response = await authFetch(`/api/dashboard${query}`, { cache: "no-store" });
       const result = await response.json();
       if (response.status === 401) {
-        window.location.replace("/login");
+        window.location.reload();
         return;
       }
       if (!response.ok) throw new Error(result.error || "Unable to load dashboard data.");

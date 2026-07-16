@@ -13,7 +13,7 @@ function monthBounds(month: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireApiSession(request, true);
+  const auth = await requireApiSession(request);
   if (auth.response) return auth.response;
   try {
     const db = createServerDatabase();
@@ -95,4 +95,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

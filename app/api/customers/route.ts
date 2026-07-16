@@ -95,10 +95,7 @@ export async function POST(request: NextRequest) {
       contact_number: body.contactNumber?.trim() || null,
       email: body.email?.trim() || null,
       billing_address: body.billingAddress?.trim() || null,
-      delivery_address:
-        body.deliveryAddress?.trim() ||
-        body.billingAddress?.trim() ||
-        null,
+      delivery_address: body.deliveryAddress?.trim() || null,
       credit_terms: body.creditTerms?.trim() || null,
     })
     .select()
@@ -154,10 +151,7 @@ export async function PATCH(request: NextRequest) {
       contact_number: body.contactNumber?.trim() || null,
       email: body.email?.trim() || null,
       billing_address: body.billingAddress?.trim() || null,
-      delivery_address:
-        body.deliveryAddress?.trim() ||
-        body.billingAddress?.trim() ||
-        null,
+      delivery_address: body.deliveryAddress?.trim() || null,
       credit_terms: body.creditTerms?.trim() || null,
       updated_at: new Date().toISOString(),
     })

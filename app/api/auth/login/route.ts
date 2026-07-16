@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE, type SessionAccess } from "@/lib/auth-session";
-import { createServerAuthClient } from "@/lib/supabase-server";
+import { createSessionToken } from "@/lib/auth-session";
+import { createServerAuthClient, createServerDatabase } from "@/lib/supabase-server";
 
-const accounts: Record<string, { emailVariable: string; access: SessionAccess }> = {
-  zijian8189: { emailVariable: "AUTH_EMAIL_ZIJIAN8189", access: "full" },
-  weijian8189: { emailVariable: "AUTH_EMAIL_WEIJIAN8189", access: "full" },
-  "123456": { emailVariable: "AUTH_EMAIL_DASHBOARD", access: "dashboard" },
+const accounts: Record<string, { emailVariable: string; displayName: string }> = {
+  zijian8189: { emailVariable: "AUTH_EMAIL_ZIJIAN8189", displayName: "Zi Jian" },
+  weijian8189: { emailVariable: "AUTH_EMAIL_WEIJIAN8189", displayName: "Wei Jian" },
+  "123456": { emailVariable: "AUTH_EMAIL_DASHBOARD", displayName: "123456" },
 };
 
 export async function POST(request: NextRequest) {
@@ -22,20 +22,29 @@ export async function POST(request: NextRequest) {
     if (!auth || !email) {
       return NextResponse.json({ error: "Login is not configured. Please contact the administrator." }, { status: 503 });
     }
-    const { error } = await auth.auth.signInWithPassword({ email, password });
-    if (error) {
+    const { data, error } = await auth.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
       return NextResponse.json({ error: "Invalid username or password." }, { status: 401 });
     }
-    const token = await createSessionToken(username, account.access);
-    const response = NextResponse.json({ username, access: account.access });
-    response.cookies.set(SESSION_COOKIE, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: SESSION_MAX_AGE,
+    const db = createServerDatabase();
+    if (!db) return NextResponse.json({ error: "Login is not configured. Please contact the administrator." }, { status: 503 });
+    const { error: profileError } = await db.from("users").upsert({
+      id: data.user.id,
+      full_name: account.displayName,
+      email,
+      role: "admin",
+      active: true,
+      updated_at: new Date().toISOString(),
     });
-    return response;
+    if (profileError) return NextResponse.json({ error: "Unable to prepare this account." }, { status: 500 });
+    const token = await createSessionToken(username, data.user.id, account.displayName);
+    return NextResponse.json({
+      token,
+      username,
+      userId: data.user.id,
+      displayName: account.displayName,
+      access: "full",
+    });
   } catch {
     return NextResponse.json({ error: "Unable to log in. Please try again." }, { status: 500 });
   }

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const SESSION_COOKIE = "tesvila_session";
 export const SESSION_MAX_AGE = 60 * 60 * 12;
-
-export type SessionAccess = "full" | "dashboard";
+export type SessionAccess = "full";
 
 export type TesvilaSession = {
   username: string;
+  userId: string;
+  displayName: string;
   access: SessionAccess;
   exp: number;
 };
@@ -40,10 +40,16 @@ async function signingKey() {
   );
 }
 
-export async function createSessionToken(username: string, access: SessionAccess) {
+export async function createSessionToken(
+  username: string,
+  userId: string,
+  displayName: string,
+) {
   const payload: TesvilaSession = {
     username,
-    access,
+    userId,
+    displayName,
+    access: "full",
     exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE,
   };
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
@@ -64,7 +70,7 @@ export async function verifySessionToken(token?: string | null): Promise<Tesvila
     );
     if (!valid) return null;
     const session = JSON.parse(new TextDecoder().decode(base64UrlDecode(payload))) as TesvilaSession;
-    if (!session.username || !["full", "dashboard"].includes(session.access)) return null;
+    if (!session.username || !session.userId || !session.displayName || session.access !== "full") return null;
     if (session.exp <= Math.floor(Date.now() / 1000)) return null;
     return session;
   } catch {
@@ -73,17 +79,17 @@ export async function verifySessionToken(token?: string | null): Promise<Tesvila
 }
 
 export async function readRequestSession(request: NextRequest) {
-  return verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value);
+  const authorization = request.headers.get("authorization");
+  const token = authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : null;
+  return verifySessionToken(token);
 }
 
-export async function requireApiSession(request: NextRequest, allowDashboard = false) {
+export async function requireApiSession(request: NextRequest) {
   const session = await readRequestSession(request);
   if (!session) {
     return { response: NextResponse.json({ error: "Your session has expired. Please log in again." }, { status: 401 }) };
   }
-  if (session.access === "dashboard" && !allowDashboard) {
-    return { response: NextResponse.json({ error: "This account can only access the dashboard." }, { status: 403 }) };
-  }
   return { session };
 }
-

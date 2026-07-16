@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { authFetch } from "@/lib/client-auth";
 
 type Customer = {
   id: string;
@@ -70,7 +71,7 @@ export function CustomerManager({
     setError("");
 
     try {
-      const response = await fetch("/api/customers", {
+      const response = await authFetch("/api/customers", {
         cache: "no-store",
       });
 
@@ -165,7 +166,7 @@ export function CustomerManager({
     setError("");
 
     try {
-      const response = await fetch("/api/customers", {
+      const response = await authFetch("/api/customers", {
         method: form.id ? "PATCH" : "POST",
         headers: {
           "content-type": "application/json",
@@ -212,7 +213,7 @@ export function CustomerManager({
     }
 
     try {
-      const response = await fetch("/api/customers", {
+      const response = await authFetch("/api/customers", {
         method: "DELETE",
         headers: {
           "content-type": "application/json",
