@@ -92,8 +92,8 @@ test("invoice and delivery-order method dropdowns persist through constrained da
   assert.match(workflow, /Please select a payment method/);
   assert.match(workflow, /itemCollectLabel\(order\.itemCollectMethod\)/);
   assert.match(workflow, /paymentMethodLabel\(inv\.paymentMethod\)/);
-  assert.match(documentsApi, /create_invoice_with_do_v5/);
-  assert.match(documentsApi, /update_delivery_order_document_v5/);
+  assert.match(documentsApi, /create_invoice_with_do_v6/);
+  assert.match(documentsApi, /update_delivery_order_document_v6/);
   assert.match(migration, /item_collect_method in \('delivery','self_collect'\)/);
   assert.match(migration, /payment_method in \('paynow','cash','terms'\)/);
   assert.match(migration, /update public\.delivery_orders[\s\S]*invoice_id = p_id/);
@@ -108,8 +108,8 @@ test("item descriptions are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "description", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "description", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /readOnly value=\{row\.description\}/);
-  assert.match(documentsApi, /create_invoice_with_do_v5/);
-  assert.match(documentsApi, /update_invoice_document_v5/);
+  assert.match(documentsApi, /create_invoice_with_do_v6/);
+  assert.match(documentsApi, /update_invoice_document_v6/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
   assert.match(migration, /with ordinality as payload_item/);
@@ -124,8 +124,8 @@ test("item brands are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "brand", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "brand", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /updated\(row\.id, "brand"/);
-  assert.match(documentsApi, /create_invoice_with_do_v5/);
-  assert.match(documentsApi, /update_delivery_order_document_v5/);
+  assert.match(documentsApi, /create_invoice_with_do_v6/);
+  assert.match(documentsApi, /update_delivery_order_document_v6/);
   assert.match(migration, /set brand = coalesce\(payload_item\.value->>'brand', ''\)/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
@@ -150,13 +150,43 @@ test("delivery-order-only supports an optional saved Invoice selector", async ()
   assert.match(workflow, /invoiceId: selectedInvoiceId \|\| undefined/);
   assert.match(workflow, /\["Invoice No\.", order\.invoiceNumber \|\|/);
   assert.match(documentsApi, /invoice_id,invoice_number/);
-  assert.match(documentsApi, /create_delivery_order_only_v5/);
-  assert.match(documentsApi, /update_delivery_order_document_v5/);
+  assert.match(documentsApi, /create_delivery_order_only_v6/);
+  assert.match(documentsApi, /update_delivery_order_document_v6/);
   assert.match(migration, /add column if not exists invoice_number text/);
   assert.match(migration, /set invoice_id = v_invoice_id/);
   assert.match(migration, /Selected Invoice was not found/);
   assert.match(css, /\.selected-invoice-field/);
   assert.match(css, /\.document-items-table \{ min-width: 900px/);
+});
+
+test("Invoice Only saves transactionally without creating a Delivery Order or stock movement", async () => {
+  const [workflow, documentsApi, migration, inventoryMigration, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/api/documents/route.ts"),
+    read("supabase/migrations/202607160006_save_invoice_only.sql"),
+    read("supabase/migrations/202607150001_inventory_reporting.sql"),
+    read("lib/supabase-server.ts"),
+  ]);
+  const start = migration.indexOf("create or replace function public.create_invoice_only_v6");
+  const end = migration.indexOf("create or replace function public.create_invoice_with_do_v6");
+  const invoiceOnlyFunction = migration.slice(start, end);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(workflow, /Save Invoice & DO/);
+  assert.match(workflow, /Save Invoice Only/);
+  assert.match(workflow, /saveInvoiceOnly/);
+  assert.match(workflow, /type: "invoice_only"/);
+  assert.match(workflow, /saving === "invoice-only"/);
+  assert.match(workflow, /\(!invoice \|\| !!inv\.doId\)/);
+  assert.match(documentsApi, /"invoice_only"/);
+  assert.match(documentsApi, /create_invoice_only_v6/);
+  assert.match(migration, /delivery_orders_one_active_invoice_unique/);
+  assert.match(migration, /This Invoice already has a linked Delivery Order\./);
+  assert.match(invoiceOnlyFunction, /insert into public\.invoices/);
+  assert.match(invoiceOnlyFunction, /insert into public\.invoice_items/);
+  assert.doesNotMatch(invoiceOnlyFunction, /insert into public\.delivery_orders/);
+  assert.doesNotMatch(invoiceOnlyFunction, /insert into public\.delivery_order_items/);
+  assert.match(inventoryMigration, /delivery_order_items/);
 });
 
 test("dashboard reads real database records and product export is removed", async () => {

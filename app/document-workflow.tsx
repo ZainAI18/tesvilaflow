@@ -110,6 +110,7 @@ type Store = {
   deliveryOrders: DORecord[];
   documentsLoading: boolean;
   saveInvoice: (draft: InvoiceDraft) => Promise<InvoiceRecord>;
+  saveInvoiceOnly: (draft: InvoiceDraft) => Promise<InvoiceRecord>;
   saveDO: (draft: DODraft) => Promise<DORecord>;
   update: (
     type: "invoice" | "delivery_order",
@@ -304,6 +305,15 @@ export function DocumentProvider({
     ]);
     return saved;
   }
+  async function saveInvoiceOnly(draft: InvoiceDraft) {
+    const data = await request({ type: "invoice_only", ...draft });
+    const saved = data.invoice as InvoiceRecord;
+    setInvoices((current) => [
+      saved,
+      ...current.filter((record) => record.id !== saved.id),
+    ]);
+    return saved;
+  }
   async function saveDO(draft: DODraft) {
     const data = await request({ type: "delivery_order", ...draft });
     const saved = data.deliveryOrder as DORecord;
@@ -329,6 +339,7 @@ export function DocumentProvider({
         deliveryOrders,
         documentsLoading,
         saveInvoice,
+        saveInvoiceOnly,
         saveDO,
         update,
         remove,
@@ -526,7 +537,7 @@ function DocumentForm({
   const reference = useDocumentReferenceData();
   const session = getClientSession();
   const [items, setItems] = useState<DocumentItem[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<"" | "invoice-do" | "invoice-only">("");
   const [error, setError] = useState("");
   const [customerId, setCustomerId] = useState(""),
     [customerName, setCustomerName] = useState(""),
@@ -660,11 +671,11 @@ function DocumentForm({
     }
     return "";
   }
-  async function submit() {
+  async function submit(saveMode: "invoice-do" | "invoice-only" = "invoice-do") {
     const validation = validationError();
     setError(validation);
     if (validation) return;
-    setSaving(true);
+    setSaving(saveMode);
     try {
       const common = {
         clientRequestId,
@@ -681,7 +692,7 @@ function DocumentForm({
         status: "Scheduled",
       };
       if (invoice) {
-        const saved = await store.saveInvoice({
+        const invoiceDraft = {
           ...common,
           invoiceDate: new Date().toISOString().slice(0, 10),
           poNumber: po,
@@ -691,9 +702,14 @@ function DocumentForm({
           paymentMethod,
           collectionMethod: "Delivery by Tesvila",
           installationOption: "Supply only",
-        });
+        };
+        const saved = saveMode === "invoice-only"
+          ? await store.saveInvoiceOnly(invoiceDraft)
+          : await store.saveInvoice(invoiceDraft);
         store.notify(
-          `${saved.invoiceNumber} saved. PDFs are available from the Invoice Table.`,
+          saveMode === "invoice-only"
+            ? `${saved.invoiceNumber} saved as Invoice Only. No Delivery Order or stock movement was created.`
+            : `${saved.invoiceNumber} and its linked Delivery Order were saved. PDFs are available from the document tables.`,
         );
         onNavigate?.("Invoice History");
       } else {
@@ -710,7 +726,7 @@ function DocumentForm({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Document could not be saved");
     } finally {
-      setSaving(false);
+      setSaving("");
     }
   }
   return (
@@ -961,18 +977,31 @@ function DocumentForm({
         )}
         <div className="row between mt document-footer-actions">
           <div><div className="issued-by-field"><span>Issued By</span><b>{session?.displayName || "—"}</b></div><span className="section-sub">No PDF is generated during this save.</span></div>
-          <div className="row"><button className="btn" disabled={saving} onClick={() => onNavigate?.("Dashboard")}>Cancel</button><button
-            className="btn primary"
-            disabled={saving || reference.loading}
-            onClick={submit}
-          >
-            <Save size={13} />
-            {saving
-              ? "Saving to database…"
-              : invoice
-                ? "Save Invoice & DO"
-                : "Save Delivery Order"}
-          </button></div>
+          <div className="row wrap document-save-actions">
+            <button className="btn" disabled={!!saving} onClick={() => onNavigate?.("Dashboard")}>Cancel</button>
+            <button
+              className="btn primary"
+              disabled={!!saving || reference.loading}
+              onClick={() => submit("invoice-do")}
+            >
+              <Save size={13} />
+              {saving === "invoice-do"
+                ? "Saving to database…"
+                : invoice
+                  ? "Save Invoice & DO"
+                  : "Save Delivery Order"}
+            </button>
+            {invoice && (
+              <button
+                className="btn primary"
+                disabled={!!saving || reference.loading}
+                onClick={() => submit("invoice-only")}
+              >
+                <Save size={13} />
+                {saving === "invoice-only" ? "Saving Invoice…" : "Save Invoice Only"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </>
@@ -1166,13 +1195,15 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
                           <FileText size={11} /> Invoice PDF
                         </button>
                       )}
-                      <button
-                        className="btn sm"
-                        disabled={!!busy}
-                        onClick={() => pdf(record, "do")}
-                      >
-                        <Download size={11} /> {invoice ? "DO PDF" : "Save PDF"}
-                      </button>
+                      {(!invoice || !!inv.doId) && (
+                        <button
+                          className="btn sm"
+                          disabled={!!busy}
+                          onClick={() => pdf(record, "do")}
+                        >
+                          <Download size={11} /> {invoice ? "DO PDF" : "Save PDF"}
+                        </button>
+                      )}
                       <button
                         className="btn sm"
                         disabled={!!busy}
@@ -1730,7 +1761,7 @@ function RecordModal({
                 <FileText size={12} /> Invoice PDF
               </button>
             )}
-            {readOnly && (
+            {readOnly && (!invoice || !!inv.doId) && (
               <button
                 className="btn"
                 onClick={async () => {
