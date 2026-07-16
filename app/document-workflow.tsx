@@ -23,7 +23,6 @@ import {
   X,
 } from "lucide-react";
 import tesvilaLogo from "../Logo original remove background.png";
-import payNowQr from "../PayNow_QR.png";
 import { authFetch, getClientSession } from "@/lib/client-auth";
 import {
   buildInvoiceReportData,
@@ -1380,17 +1379,9 @@ function InvoiceReportPreview({
                       </div>
                       <div className="invoice-title-logo">
                         <h2>{report.title}</h2>
-                        <Image src={tesvilaLogo} alt="TESVILA" priority />
                       </div>
                     </header>
                     <div className="invoice-report-intro">
-                      <section className="invoice-to">
-                        <b>Invoice To:</b>
-                        <strong>{report.customer.companyName}</strong>
-                        <span>{report.customer.address}</span>
-                        <span>Contact Name: {report.customer.contactName}</span>
-                        <span>Contact Number: {report.customer.contactNumber}</span>
-                      </section>
                       <table className="invoice-info-table"><tbody>
                         <tr><th>Invoice No.</th><td><b>{report.invoiceNumber}</b></td></tr>
                         <tr><th>PO No.</th><td>{report.poNumber}</td></tr>
@@ -1398,7 +1389,15 @@ function InvoiceReportPreview({
                         <tr><th>Issued Date</th><td>{report.issuedDate}</td></tr>
                         <tr><th>Delivery Date</th><td>{report.deliveryOrders.length ? report.deliveryOrders.map((order) => <div key={order.number}>{order.number} - {order.date}</div>) : "-"}</td></tr>
                       </tbody></table>
+                      <div className="invoice-report-logo"><Image src={tesvilaLogo} alt="TESVILA" priority /></div>
                     </div>
+                    <section className="invoice-to">
+                      <b>Invoice To:</b>
+                      <strong>{report.customer.companyName}</strong>
+                      <span>{report.customer.address}</span>
+                      <span>Contact Name: {report.customer.contactName}</span>
+                      <span>Contact Number: {report.customer.contactNumber}</span>
+                    </section>
                   </>
                 ) : (
                   <header className="invoice-continuation-header">
@@ -1437,10 +1436,9 @@ function InvoiceReportPreview({
                       </tbody></table>
                     </div>
                     <div className="invoice-terms-row">
-                      <div className="invoice-qr"><Image src={payNowQr} alt="PayNow QR" /><b>PayNow UEN: 201604567R</b></div>
                       <div className="invoice-terms"><b>Terms and Conditions:</b><ol>{report.terms.map((term) => <li key={term}>{term}</li>)}</ol></div>
+                      <div className="invoice-issued-by">Issued By: {report.issuedBy}</div>
                     </div>
-                    <div className="invoice-issued-by">Issued By: {report.issuedBy}</div>
                   </footer>
                 )}
                 <div className="invoice-page-number">Page {pageIndex + 1} of {pages.length}</div>
@@ -2225,16 +2223,11 @@ function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
 }
 
 export async function generateInvoicePdf(inv: InvoiceRecord) {
-  const [logoResponse, qrResponse] = await Promise.all([
-    fetch(tesvilaLogo.src),
-    fetch(payNowQr.src),
-  ]);
+  const logoResponse = await fetch(tesvilaLogo.src);
   if (!logoResponse.ok) throw new Error("Tesvila logo could not be loaded");
-  if (!qrResponse.ok) throw new Error("PayNow QR code could not be loaded");
   const bytes = await createInvoicePdf(
     buildInvoiceReportData(inv),
     await logoResponse.arrayBuffer(),
-    await qrResponse.arrayBuffer(),
   );
   const anchor = document.createElement("a");
   anchor.href = URL.createObjectURL(

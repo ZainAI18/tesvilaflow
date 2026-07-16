@@ -24,7 +24,6 @@ type Kit = {
   regular: PDFFont;
   bold: PDFFont;
   logo: PDFImage;
-  qr: PDFImage;
   pages: PDFPage[];
 };
 
@@ -129,23 +128,29 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
     font: bold,
     color: BLUE,
   });
-  const companyLines = [
-    data.company.addressLine1,
-    data.company.addressLine2,
-    `TEL: ${data.company.telephone}`,
-    `EMAIL: ${data.company.email}`,
-    `Co./GST Reg.No. ${data.company.registrationNumber}`,
-  ];
-  drawTextLines(page, regular, companyLines, MARGIN, 791, 6.8, 9, BLACK);
-
+  drawTextLines(
+    page,
+    regular,
+    [
+      data.company.addressLine1,
+      data.company.addressLine2,
+      `TEL: ${data.company.telephone}`,
+      `EMAIL: ${data.company.email}`,
+      `Co./GST Reg.No. ${data.company.registrationNumber}`,
+    ],
+    MARGIN,
+    791,
+    6.8,
+    9,
+    BLACK,
+  );
   page.drawText(data.title, {
-    x: 450,
-    y: 805,
-    size: 20,
+    x: 446,
+    y: 792,
+    size: 26,
     font: bold,
     color: BLUE,
   });
-  drawImageFit(page, kit.logo, 486, 744, 72, 48);
   page.drawLine({
     start: { x: MARGIN, y: 738 },
     end: { x: A4_WIDTH - MARGIN, y: 738 },
@@ -153,27 +158,26 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
     color: BLUE,
   });
 
-  const infoX = 326;
-  const infoY = 726;
-  const labelWidth = 80;
-  const valueWidth = CONTENT_WIDTH - (infoX - MARGIN) - labelWidth;
+  const infoX = MARGIN;
+  const infoWidth = 252;
+  const labelWidth = 82;
   const deliveryLines = data.deliveryOrders.length
     ? data.deliveryOrders.map((order) => `${order.number} - ${order.date}`)
     : ["-"];
   const rows = [
     ["Invoice No.", [data.invoiceNumber]],
     ["PO No.", [data.poNumber]],
-    ["DO No.", wrap(regular, 7, data.doNumbers, valueWidth - 8)],
+    ["DO No.", wrap(regular, 7, data.doNumbers, infoWidth - labelWidth - 10)],
     ["Issued Date", [data.issuedDate]],
     ["Delivery Date", deliveryLines],
   ] as const;
-  let infoCursor = infoY;
+  let infoCursor = 726;
   rows.forEach(([label, values]) => {
     const rowHeight = Math.max(16, values.length * 8 + 6);
     page.drawRectangle({
       x: infoX,
       y: infoCursor - rowHeight,
-      width: CONTENT_WIDTH - (infoX - MARGIN),
+      width: infoWidth,
       height: rowHeight,
       borderColor: BLACK,
       borderWidth: 0.55,
@@ -204,38 +208,44 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
     infoCursor -= rowHeight;
   });
 
+  drawImageFit(page, kit.logo, 348, 632, 190, 88);
+
+  const customerTop = infoCursor - 24;
   page.drawText("Invoice To:", {
-    x: MARGIN,
-    y: 720,
+    x: MARGIN + 7,
+    y: customerTop,
     size: 8,
     font: bold,
     color: BLUE,
   });
   const customerLines = [
-    ...wrap(bold, 9, data.customer.companyName, 250),
-    ...wrap(regular, 7.2, data.customer.address, 250),
+    ...wrap(bold, 9, data.customer.companyName, 260),
+    ...wrap(regular, 7.2, data.customer.address, 260),
     `Contact Name: ${data.customer.contactName}`,
     `Contact Number: ${data.customer.contactNumber}`,
   ];
   customerLines.forEach((line, index) =>
     page.drawText(line, {
-      x: MARGIN,
-      y: 706 - index * 10,
+      x: MARGIN + 7,
+      y: customerTop - 16 - index * 10,
       size: index === 0 ? 9 : 7.2,
       font: index === 0 ? bold : regular,
       color: BLACK,
     }),
   );
 
+  const customerBottom = customerTop - 16 - customerLines.length * 10;
+  const titleY = Math.min(562, customerBottom - 16);
   page.drawText(data.sectionTitle, {
     x: 235,
-    y: 598,
+    y: titleY,
     size: 9,
     font: bold,
     color: BLUE,
   });
-  return 584;
+  return titleY - 14;
 }
+
 
 function drawContinuationHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
   page.drawText(data.company.name, {
@@ -323,16 +333,16 @@ function drawTableHeader(kit: Kit, page: PDFPage, topY: number) {
 
 function itemDescriptionLines(kit: Kit, item: InvoiceReportItem) {
   return [
-    ...wrap(kit.bold, 7.1, item.sku, columns.description.width - 10),
-    ...wrap(kit.regular, 6.8, item.model, columns.description.width - 10),
-    ...wrap(kit.regular, 6.8, item.type, columns.description.width - 10),
-    ...wrap(kit.regular, 6.8, item.description, columns.description.width - 10),
+    ...wrap(kit.bold, 6.4, item.sku, columns.description.width - 10),
+    ...wrap(kit.regular, 6.1, item.model, columns.description.width - 10),
+    ...wrap(kit.regular, 6.1, item.type, columns.description.width - 10),
+    ...wrap(kit.regular, 6.1, item.description, columns.description.width - 10),
   ].filter((line, index, lines) => line || index === 0 || lines.length === 1);
 }
 
 function itemRowHeight(kit: Kit, item?: InvoiceReportItem) {
   if (!item) return 23;
-  return Math.max(27, itemDescriptionLines(kit, item).length * 7.7 + 8);
+  return Math.max(25, itemDescriptionLines(kit, item).length * 6.5 + 6);
 }
 
 function drawItemRow(
@@ -370,8 +380,8 @@ function drawItemRow(
   descriptionLines.forEach((line, index) =>
     page.drawText(line, {
       x: columns.description.x + 5,
-      y: topY - 10 - index * 7.7,
-      size: index === 0 ? 7.1 : 6.8,
+      y: topY - 9 - index * 6.5,
+      size: index === 0 ? 6.4 : 6.1,
       font: index === 0 ? kit.bold : kit.regular,
       color: BLACK,
     }),
@@ -457,26 +467,17 @@ function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: numb
   });
   cursor = boxTop - boxHeight - 9;
 
-  page.drawText("Terms and Conditions:", { x: 126, y: cursor, size: 6.7, font: bold, color: BLUE });
+  page.drawText("Terms and Conditions:", { x: MARGIN, y: cursor, size: 6.7, font: bold, color: BLUE });
   let termsY = cursor - 9;
   data.terms.forEach((term, index) => {
-    const lines = wrap(regular, 5.4, `${index + 1}. ${term}`, A4_WIDTH - MARGIN - 126);
-    drawTextLines(page, regular, lines, 126, termsY, 5.4, 6.25, BLACK);
+    const lines = wrap(regular, 5.4, `${index + 1}. ${term}`, 360);
+    drawTextLines(page, regular, lines, MARGIN, termsY, 5.4, 6.25, BLACK);
     termsY -= lines.length * 6.25;
   });
-  const qrSize = 78;
-  drawImageFit(page, kit.qr, MARGIN, Math.max(43, cursor - qrSize - 10), qrSize, qrSize);
-  page.drawText("PayNow UEN: 201604567R", {
-    x: MARGIN,
-    y: Math.max(35, cursor - qrSize - 17),
-    size: 5.5,
-    font: bold,
-    color: BLUE,
-  });
   page.drawText(`Issued By: ${data.issuedBy}`, {
-    x: 420,
-    y: 32,
-    size: 7,
+    x: 414,
+    y: Math.max(52, cursor - 62),
+    size: 10,
     font: bold,
     color: BLACK,
   });
@@ -485,14 +486,12 @@ function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: numb
 export async function createInvoicePdf(
   data: InvoiceReportData,
   logoBytes: ArrayBuffer | Uint8Array,
-  qrBytes: ArrayBuffer | Uint8Array,
 ) {
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const logo = await doc.embedPng(logoBytes);
-  const qr = await doc.embedPng(qrBytes);
-  const kit: Kit = { doc, regular, bold, logo, qr, pages: [] };
+  const kit: Kit = { doc, regular, bold, logo, pages: [] };
 
   let page = addPage(kit);
   let y = drawTableHeader(kit, page, drawMainHeader(kit, page, data));
