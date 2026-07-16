@@ -706,7 +706,10 @@ function DocumentForm({
                   className="input"
                   style={{ marginTop: 4 }}
                   value={row.brand}
-                  readOnly
+                  placeholder="Brand"
+                  onChange={(e) =>
+                    updated(row.id, "brand", e.target.value)
+                  }
                 />
               </div>
               <div>
@@ -1328,6 +1331,18 @@ function RecordModal({
                         className="input"
                         disabled={readOnly}
                         value={i.description}
+                        onChange={(e) =>
+                          setItem(i.id, "description", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="input"
+                        style={{marginTop:4}}
+                        disabled={readOnly}
+                        value={i.brand}
+                        placeholder="Brand"
                         onChange={(e) =>
                           setItem(i.id, "description", e.target.value)
                         }
