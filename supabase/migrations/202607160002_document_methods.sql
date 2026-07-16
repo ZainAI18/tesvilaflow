@@ -155,3 +155,5 @@ grant execute on function public.create_invoice_with_do_v2(jsonb) to authenticat
 grant execute on function public.create_delivery_order_only_v2(jsonb) to authenticated,service_role;
 grant execute on function public.update_invoice_document_v2(uuid,jsonb) to authenticated,service_role;
 grant execute on function public.update_delivery_order_document_v2(uuid,jsonb) to authenticated,service_role;
+
+notify pgrst, 'reload schema';
