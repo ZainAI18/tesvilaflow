@@ -84,7 +84,7 @@ export function DashboardManager() {
       <div className="grid-4 dashboard-metrics">
         <DashboardMetric label="Total Sales" value={currency.format(summary.sales)} detail={monthLabel(data.selectedMonth)} icon={CircleDollarSign} />
         <DashboardMetric label="Outstanding" value={currency.format(summary.outstanding)} detail="Unpaid invoice balance" icon={ReceiptText} />
-        <DashboardMetric label="Total Gross Profit(NOT INCLUDED SALARY & LABOUR)" value={currency.format(summary.grossProfit)} detail={`${summary.grossProfitPercentage.toFixed(1)}% gross profit`} icon={TrendingUp} />
+        <DashboardMetric label="Total Gross Profit(NOT INCLUDED SALARY,LABOUR & RENTAL)" value={currency.format(summary.grossProfit)} detail={`${summary.grossProfitPercentage.toFixed(1)}% gross profit`} icon={TrendingUp} />
         <DashboardMetric label="Low Stock Items" value={String(summary.lowStock)} detail="Current inventory status" icon={AlertTriangle} />
       </div>
       <div className="dashboard-second-row">
@@ -92,7 +92,7 @@ export function DashboardManager() {
           <div className="row between"><div><h3 className="section-title">Profit Guide</h3><p className="section-sub">Performance for {monthLabel(data.selectedMonth)}</p></div><span className={`profit-rating rating-${guide.toLowerCase()}`}>{guide}</span></div>
           <div className="profit-percent">{summary.grossProfitPercentage.toFixed(1)}%</div>
           <div className="profit-track" aria-label={`Gross profit ${summary.grossProfitPercentage.toFixed(1)} percent`}><span style={{ width: `${Math.max(0, Math.min(100, summary.grossProfitPercentage))}%` }} /></div>
-          <div className="profit-breakdown"><span>Sales <b>{currency.format(summary.sales)}</b></span><span>Costing(NOT INCLUDED SALARY & LABOUR) <b>{currency.format(summary.costing)}</b></span><span>Gross Profit <b>{currency.format(summary.grossProfit)}</b></span></div>
+          <div className="profit-breakdown"><span>Sales <b>{currency.format(summary.sales)}</b></span><span>Costing(NOT INCLUDED SALARY,LABOUR & RENTAL) <b>{currency.format(summary.costing)}</b></span><span>Gross Profit <b>{currency.format(summary.grossProfit)}</b></span></div>
         </div>
         <div className="card pad monthly-sales-card">
           <div><h3 className="section-title">Monthly Sales</h3><p className="section-sub">Daily sales, costing and profit</p></div>
