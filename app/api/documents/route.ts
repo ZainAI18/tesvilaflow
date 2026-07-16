@@ -120,15 +120,17 @@ export async function POST(req: NextRequest) {
       { status: 503 },
     );
   const body = await req.json();
-  if (!["invoice_with_do", "delivery_order"].includes(body.type))
+  if (!["invoice_with_do", "invoice_only", "delivery_order"].includes(body.type))
     return NextResponse.json(
       { error: "Unknown document type" },
       { status: 400 },
     );
   const fn =
     body.type === "invoice_with_do"
-      ? "create_invoice_with_do_v5"
-      : "create_delivery_order_only_v5";
+      ? "create_invoice_with_do_v6"
+      : body.type === "invoice_only"
+        ? "create_invoice_only_v6"
+        : "create_delivery_order_only_v6";
   const payload = {
     ...body,
     issuedByUserId: auth.session.userId,
@@ -151,9 +153,9 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const fn =
     body.type === "invoice"
-      ? "update_invoice_document_v5"
+      ? "update_invoice_document_v6"
       : body.type === "delivery_order"
-        ? "update_delivery_order_document_v5"
+        ? "update_delivery_order_document_v6"
         : null;
   if (!fn)
     return NextResponse.json(

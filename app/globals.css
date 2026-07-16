@@ -560,6 +560,7 @@ textarea.input {
 .field-help { margin-top: 5px; color: var(--muted); font-size: 9px; }
 .invalid-help { color: #a33b35; }
 .document-footer-actions { align-items: flex-end; gap: 18px; }
+.document-save-actions { justify-content: flex-end; }
 .issued-by-field { display: flex; gap: 8px; align-items: baseline; margin-bottom: 7px; }
 .issued-by-field span { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .issued-by-field b { color: var(--tesvila-blue); font-size: 12px; }
@@ -861,6 +862,7 @@ textarea.input {
   .document-method-row,
   .document-method-row.two { grid-template-columns: 1fr; max-width: none; }
   .document-footer-actions { align-items: stretch; flex-direction: column; }
+  .document-save-actions { justify-content: flex-start; }
   .invoice-sheet {
     padding: 16px;
   }
