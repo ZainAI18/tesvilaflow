@@ -78,10 +78,11 @@ test("document workflow is database-backed, empty by default, and validates rela
 });
 
 test("invoice and delivery-order method dropdowns persist through constrained database wrappers", async () => {
-  const [workflow, documentsApi, migration] = await Promise.all([
+  const [workflow, documentsApi, migration, report] = await Promise.all([
     read("app/document-workflow.tsx"),
     read("app/api/documents/route.ts"),
     read("supabase/migrations/202607160002_document_methods.sql"),
+    read("lib/invoice-report.ts"),
   ]);
   assert.match(workflow, /Item Collect Method/);
   assert.match(workflow, /Select method/);
@@ -91,7 +92,8 @@ test("invoice and delivery-order method dropdowns persist through constrained da
   assert.match(workflow, /Please select an item collect method/);
   assert.match(workflow, /Please select a payment method/);
   assert.match(workflow, /itemCollectLabel\(order\.itemCollectMethod\)/);
-  assert.match(workflow, /paymentMethodLabel\(inv\.paymentMethod\)/);
+  assert.match(report, /invoice\.paymentMethod === "paynow"/);
+  assert.match(report, /invoice\.paymentMethod === "terms"/);
   assert.match(documentsApi, /create_invoice_with_do_v7/);
   assert.match(documentsApi, /update_delivery_order_document_v7/);
   assert.match(migration, /item_collect_method in \('delivery','self_collect'\)/);
@@ -260,4 +262,33 @@ test("dashboard reads real database records and product export is removed", asyn
   assert.match(dashboard, /Profit Guide/);
   assert.match(dashboard, /Monthly Sales/);
   assert.doesNotMatch(productManager, /tesvila-products\.csv|> Export/);
+});
+
+test("Invoice View and PDF share the redesigned A4 report data and repository assets", async () => {
+  const [workflow, report, pdf, documentsApi, css, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("lib/invoice-report.ts"),
+    read("lib/invoice-pdf.ts"),
+    read("app/api/documents/route.ts"),
+    read("app/globals.css"),
+    read("lib/supabase-server.ts"),
+  ]);
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(workflow, /function InvoiceReportPreview/);
+  assert.match(workflow, /buildInvoiceReportData\(invoice\)/);
+  assert.match(workflow, /createInvoicePdf\(/);
+  assert.match(workflow, /payNowQr from "\.\.\/PayNow_QR\.png"/);
+  assert.match(workflow, /tesvilaLogo from "\.\.\/Logo original remove background\.png"/);
+  assert.match(report, /BLOCK 4001 ANG MO KIO INDUSTRIAL PARK1/);
+  assert.match(report, /Please note that the pricing provided in this invoice is a special price/);
+  assert.match(report, /Bank transfer to: OCBC Bank 526 228 440 001/);
+  assert.match(report, /new Map\(/);
+  assert.match(report, /Math\.max\(3, items\.length\)/);
+  assert.match(report, /const firstPageSize = 8/);
+  assert.match(pdf, /forceContinuation = data\.items\.length > 8 && index === 8/);
+  assert.match(pdf, /Page \$\{index \+ 1\} of \$\{kit\.pages\.length\}/);
+  assert.match(documentsApi, /subtotal,gst_amount,grand_total,deposit,balance/);
+  assert.match(css, /@page \{ size: A4 portrait; margin: 0; \}/);
+  assert.match(css, /page-break-inside: avoid/);
+  assert.match(css, /body \* \{ visibility: hidden !important; \}/);
 });
