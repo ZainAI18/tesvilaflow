@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     db
       .from("delivery_orders")
       .select(
-        "id,do_number,delivery_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,item_collect_method,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
+        "id,do_number,delivery_date,customer_id,invoice_id,invoice_number,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,item_collect_method,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
@@ -90,8 +90,8 @@ export async function GET(req: NextRequest) {
     doNumber: x.do_number,
     deliveryDate: x.delivery_date,
     customer: customer(x),
-    invoiceNumber: x.invoice?.invoice_number || "—",
-    invoiceId: x.invoice?.id,
+    invoiceNumber: x.invoice_number || x.invoice?.invoice_number || "—",
+    invoiceId: x.invoice_id || x.invoice?.id || undefined,
     deliveryAddress: x.delivery_address,
     deliveryContact: x.contact_person || "",
     deliveryPhone: x.contact_number || "",
@@ -127,8 +127,8 @@ export async function POST(req: NextRequest) {
     );
   const fn =
     body.type === "invoice_with_do"
-      ? "create_invoice_with_do_v4"
-      : "create_delivery_order_only_v4";
+      ? "create_invoice_with_do_v5"
+      : "create_delivery_order_only_v5";
   const payload = {
     ...body,
     issuedByUserId: auth.session.userId,
@@ -151,9 +151,9 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const fn =
     body.type === "invoice"
-      ? "update_invoice_document_v4"
+      ? "update_invoice_document_v5"
       : body.type === "delivery_order"
-        ? "update_delivery_order_document_v4"
+        ? "update_delivery_order_document_v5"
         : null;
   if (!fn)
     return NextResponse.json(

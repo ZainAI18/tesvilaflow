@@ -340,6 +340,7 @@ button {
   font-size: 11px;
   outline: none;
   width: 100%;
+  min-width: 0;
 }
 .input:focus {
   border-color: var(--tesvila-blue);
@@ -355,6 +356,7 @@ textarea.input {
 }
 .table-wrap {
   overflow: auto;
+  max-width: 100%;
 }
 .table {
   width: 100%;
@@ -450,6 +452,8 @@ textarea.input {
   border-radius: 12px;
   padding: 28px;
   box-shadow: 0 5px 20px #26342d0a;
+  min-width: 0;
+  overflow: visible;
 }
 .sheet-head {
   display: flex;
@@ -492,7 +496,46 @@ textarea.input {
   grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr) minmax(180px, 1fr);
   gap: 14px;
   padding: 20px 0 12px;
+  min-width: 0;
+  overflow: visible;
 }
+.document-customer-fields > *,
+.document-contact-row > *,
+.document-address-grid > *,
+.document-meta-row > *,
+.document-method-row > *,
+.document-modal .grid-2 > * { min-width: 0; }
+.selected-invoice-field {
+  position: relative;
+  z-index: 8;
+  max-width: 760px;
+  padding-top: 20px;
+}
+.modal-body > .selected-invoice-field {
+  max-width: none;
+  padding: 0 0 18px;
+}
+.selected-invoice-control {
+  position: relative;
+  min-width: 0;
+}
+.selected-invoice-control .input { padding-right: 38px; }
+.selected-invoice-clear {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  z-index: 2;
+}
+.selected-invoice-clear:hover { background: #eef2f6; color: var(--tesvila-blue); }
 .document-customer-fields > .customer-combobox { grid-column: 1; }
 .document-customer-fields > .document-contact-row { grid-column: 2 / -1; }
 .document-customer-fields > .document-address-grid,
@@ -525,6 +568,11 @@ textarea.input {
   border-radius: 9px;
   overflow: auto;
 }
+.document-items-table { min-width: 900px; table-layout: fixed; }
+.document-items-table th,
+.document-items-table td,
+.table th,
+.table td { overflow-wrap: anywhere; word-break: normal; }
 .edit-row {
   display: grid;
   grid-template-columns: 34px .9fr 1fr 1fr 1.5fr 70px 90px 80px 90px 60px;
@@ -816,6 +864,9 @@ textarea.input {
   .invoice-sheet {
     padding: 16px;
   }
+  .sheet-head { flex-direction: column; gap: 16px; }
+  .doc-title { text-align: left; }
+  .selected-invoice-field { max-width: none; }
   .search {
     min-width: 0;
     flex: 1;
