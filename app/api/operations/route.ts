@@ -8,7 +8,7 @@ function database() {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireApiSession(req);
+  const auth = await requireApiSession(req, ["full", "warehouse"]);
   if (auth.response) return auth.response;
   const db = database();
   if (!db)
@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireApiSession(req);
+  const auth = await requireApiSession(req, ["full", "warehouse"]);
   if (auth.response) return auth.response;
   const db = database();
   if (!db)

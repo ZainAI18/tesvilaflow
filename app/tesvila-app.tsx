@@ -390,6 +390,23 @@ const navGroups = [
   ],
 ] as const;
 
+const warehouseNavGroups = [
+  ["Overview", [["Dashboard", LayoutDashboard]]],
+  [
+    "Warehouse",
+    [
+      ["Inventory Stock", Boxes],
+      ["Stock Movement History", Activity],
+    ],
+  ],
+] as const;
+
+const warehousePages: NavKey[] = [
+  "Dashboard",
+  "Inventory Stock",
+  "Stock Movement History",
+];
+
 function TesvilaShell({ session, onLogout }: { session: ClientSession; onLogout: () => void }) {
   const [page, setPage] = useState<NavKey>("Dashboard");
   const [menu, setMenu] = useState(false);
@@ -407,14 +424,19 @@ function TesvilaShell({ session, onLogout }: { session: ClientSession; onLogout:
     window.addEventListener("tesvila-toast", handle);
     return () => window.removeEventListener("tesvila-toast", handle);
   }, []);
-  const title = page;
+  const activePage =
+    session.access === "full" || warehousePages.includes(page)
+      ? page
+      : "Dashboard";
+  const title = activePage;
   const today = new Intl.DateTimeFormat("en-SG", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
   }).format(new Date());
-  const visibleNavGroups = navGroups;
+  const visibleNavGroups =
+    session.access === "warehouse" ? warehouseNavGroups : navGroups;
   const initials = session.username.slice(0, 2).toUpperCase();
   return (
     <div className="shell">
@@ -433,7 +455,7 @@ function TesvilaShell({ session, onLogout }: { session: ClientSession; onLogout:
               {items.map(([n, I]) => (
                 <button
                   key={n}
-                  className={page === n ? "active" : ""}
+                  className={activePage === n ? "active" : ""}
                   onClick={() => {
                     setPage(n as NavKey);
                     setMenu(false);
@@ -452,7 +474,7 @@ function TesvilaShell({ session, onLogout }: { session: ClientSession; onLogout:
           <div className="avatar">{initials}</div>
           <div>
             <b>{session.username}</b>
-            <span>Administrator</span>
+            <span>{session.access === "warehouse" ? "Warehouse Access" : "Administrator"}</span>
           </div>
           <ChevronDown size={13} />
         </button>
@@ -473,16 +495,18 @@ function TesvilaShell({ session, onLogout }: { session: ClientSession; onLogout:
             </div>
           </div>
           <div className="top-actions">
-            <button
-              className="btn primary"
-              onClick={() => setPage("Create Invoice & DO")}
-            >
-              <Plus size={14} /> Invoice
-            </button>
+            {session.access === "full" && (
+              <button
+                className="btn primary"
+                onClick={() => setPage("Create Invoice & DO")}
+              >
+                <Plus size={14} /> Invoice
+              </button>
+            )}
           </div>
         </header>
         <div className="content">
-          {renderPage(page, {
+          {renderPage(activePage, {
             search,
             setSearch,
             notify,

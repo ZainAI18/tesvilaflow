@@ -3,7 +3,7 @@ export type ClientSession = {
   username: string;
   userId: string;
   displayName: string;
-  access: "full";
+  access: "full" | "warehouse";
 };
 
 let currentSession: ClientSession | null = null;

@@ -20,10 +20,29 @@ test("uses an independent, non-persistent signed session for every tab", async (
   assert.match(login, /signInWithPassword/);
   assert.match(login, /Zi Jian/);
   assert.match(login, /Wei Jian/);
-  assert.match(login, /access:\s*"full"/);
+  assert.match(login, /access:\s*"warehouse"/);
+  assert.match(login, /account\.access === "warehouse" \? "warehouse" : "admin"/);
   assert.doesNotMatch(login, /password:\s*["'][^"']+["']/);
   assert.match(shell, /setClientSession\(null\)/);
+  assert.match(shell, /warehouseNavGroups/);
+  assert.match(shell, /"Inventory Stock"/);
+  assert.match(shell, /"Stock Movement History"/);
+  assert.match(shell, /session\.access === "full"/);
   assert.doesNotMatch(shell, /Caught Up|Bell/);
+});
+
+test("warehouse account is enforced by server APIs, not only hidden navigation", async () => {
+  const [session, dashboardApi, operationsApi, documentApi] = await Promise.all([
+    read("lib/auth-session.ts"),
+    read("app/api/dashboard/route.ts"),
+    read("app/api/operations/route.ts"),
+    read("app/api/documents/route.ts"),
+  ]);
+  assert.match(session, /allowedAccess:\s*SessionAccess\[\]/);
+  assert.match(session, /status:\s*403/);
+  assert.match(dashboardApi, /\["full", "warehouse"\]/);
+  assert.match(operationsApi, /\["full", "warehouse"\]/);
+  assert.doesNotMatch(documentApi, /\["full", "warehouse"\]/);
 });
 
 test("uses the TESVILA blue theme and repository logo", async () => {
