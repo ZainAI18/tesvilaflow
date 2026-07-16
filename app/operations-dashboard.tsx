@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Download, Plus, RefreshCw, X } from "lucide-react";
 import * as XLSX from "xlsx";
+import { authFetch } from "@/lib/client-auth";
 
 type Product = {
   id: string;
@@ -90,7 +91,7 @@ function useOperations(start?: string, end?: string) {
       const q = new URLSearchParams();
       if (start) q.set("start", start);
       if (end) q.set("end", end);
-      const r = await fetch(`/api/operations?${q}`);
+      const r = await authFetch(`/api/operations?${q}`);
       const body = await r.json();
       if (!r.ok)
         throw new Error(body.error || "Unable to load operations data");
@@ -284,7 +285,7 @@ function MovementModal({
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/operations", {
+      const r = await authFetch("/api/operations", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

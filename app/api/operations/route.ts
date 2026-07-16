@@ -1,19 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireApiSession } from "@/lib/auth-session";
+import { createServerDatabase } from "@/lib/supabase-server";
 
 function database() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  return url && key
-    ? createClient(url, key, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : null;
+  return createServerDatabase();
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(
@@ -49,7 +45,7 @@ export async function GET(req: NextRequest) {
     db
       .from("invoices")
       .select(
-        "id,invoice_number,invoice_date,subtotal,gst_amount,grand_total,status,customer:customers(company_name),items:invoice_items(quantity,unit_price,unit_cost,discount_amount,product:products(id,sku,product_model,product_type))",
+        "id,invoice_number,invoice_date,customer_company_name,subtotal,gst_amount,grand_total,status,customer:customers(company_name),items:invoice_items(quantity,unit_price,unit_cost,discount_amount,product:products(id,sku,product_model,product_type))",
       )
       .is("deleted_at", null)
       .gte("invoice_date", start)
@@ -77,6 +73,7 @@ export async function GET(req: NextRequest) {
     );
     return {
       ...invoice,
+      customer: { company_name: invoice.customer_company_name || invoice.customer?.company_name || "" },
       net_sales: netSales,
       cost,
       gross_profit: netSales - cost,
@@ -92,6 +89,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(

@@ -1,17 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireApiSession } from "@/lib/auth-session";
+import { createServerDatabase } from "@/lib/supabase-server";
 
 function database() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-    key =
-      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createServerDatabase();
 }
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(
@@ -25,14 +22,14 @@ export async function GET() {
     db
       .from("invoices")
       .select(
-        "id,invoice_number,invoice_date,po_number,gst_rate,deposit,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),delivery_order:delivery_orders(id,do_number)",
+        "id,invoice_number,invoice_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_rate,deposit,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),delivery_order:delivery_orders(id,do_number)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     db
       .from("delivery_orders")
       .select(
-        "id,do_number,delivery_date,delivery_address,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,contact_person,contact_number),items:delivery_order_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
+        "id,do_number,delivery_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
@@ -42,11 +39,13 @@ export async function GET() {
       { error: invoiceError?.message || doError?.message },
       { status: 400 },
     );
-  const customer = (raw: any) => ({
-    name: raw?.company_name || "",
-    address: raw?.billing_address || "",
-    attention: raw?.contact_person || "",
-    phone: raw?.contact_number || "",
+  const customer = (row: any) => ({
+    customerId: row.customer_id || undefined,
+    name: row.customer_company_name || row.customer?.company_name || "",
+    billingAddress: row.billing_address || row.customer?.billing_address || "",
+    deliveryAddress: row.delivery_address || row.customer?.delivery_address || "",
+    attention: row.customer_contact_person || row.customer?.contact_person || "",
+    phone: row.customer_contact_number || row.customer?.contact_number || "",
   });
   const items = (rows: any[] = []) =>
     rows.map((x) => ({
@@ -67,7 +66,7 @@ export async function GET() {
     id: x.id,
     invoiceNumber: x.invoice_number,
     invoiceDate: x.invoice_date,
-    customer: customer(x.customer),
+    customer: customer(x),
     doNumber: x.delivery_order?.[0]?.do_number || "—",
     doId: x.delivery_order?.[0]?.id || "",
     poNumber: x.po_number || "",
@@ -81,14 +80,15 @@ export async function GET() {
     collectionMethod: "Delivery by Tesvila",
     installationOption: "Supply only",
     remarks: x.remarks || "",
-    createdBy: "Tesvila User",
+    createdBy: x.issued_by_display_name || "Tesvila User",
+    issuedByUserId: x.issued_by_user_id || undefined,
     createdAt: x.created_at,
   }));
   const deliveryOrders = (doRows || []).map((x: any) => ({
     id: x.id,
     doNumber: x.do_number,
     deliveryDate: x.delivery_date,
-    customer: customer(x.customer),
+    customer: customer(x),
     invoiceNumber: x.invoice?.invoice_number || "—",
     invoiceId: x.invoice?.id,
     deliveryAddress: x.delivery_address,
@@ -99,12 +99,15 @@ export async function GET() {
       .replaceAll("_", " ")
       .replace(/\b\w/g, (c: string) => c.toUpperCase()),
     remarks: x.remarks || "",
-    createdBy: "Tesvila User",
+    createdBy: x.issued_by_display_name || "Tesvila User",
+    issuedByUserId: x.issued_by_user_id || undefined,
     createdAt: x.created_at,
   }));
   return NextResponse.json({ invoices, deliveryOrders });
 }
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(
@@ -124,12 +127,19 @@ export async function POST(req: NextRequest) {
     body.type === "invoice_with_do"
       ? "create_invoice_with_do"
       : "create_delivery_order_only";
-  const { data, error } = await db.rpc(fn, { p_payload: body });
+  const payload = {
+    ...body,
+    issuedByUserId: auth.session.userId,
+    issuedByDisplayName: auth.session.displayName,
+  };
+  const { data, error } = await db.rpc(fn, { p_payload: payload });
   if (error)
     return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json(data, { status: 201 });
 }
 export async function PATCH(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(
@@ -150,13 +160,19 @@ export async function PATCH(req: NextRequest) {
     );
   const { error } = await db.rpc(fn, {
     p_id: body.record.id,
-    p_payload: body.record,
+    p_payload: {
+      ...body.record,
+      updatedByUserId: auth.session.userId,
+      updatedByDisplayName: auth.session.displayName,
+    },
   });
   if (error)
     return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ ok: true });
 }
 export async function DELETE(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth.response) return auth.response;
   const db = database();
   if (!db)
     return NextResponse.json(

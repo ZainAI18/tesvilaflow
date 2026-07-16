@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, prefer-const */
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import * as XLSX from "xlsx";
 import {
@@ -22,7 +23,6 @@ import {
   AlertTriangle,
   Archive,
   BarChart3,
-  Bell,
   Boxes,
   Check,
   ChevronDown,
@@ -36,6 +36,7 @@ import {
   GripVertical,
   History,
   LayoutDashboard,
+  LogOut,
   Menu,
   Package,
   PackageCheck,
@@ -56,6 +57,10 @@ import {
 import { DocumentProvider, DocumentWorkflow } from "./document-workflow";
 import { ProductManager } from "./product-manager";
 import { CustomerManager } from "./customer-manager";
+import { DashboardManager } from "./dashboard-manager";
+import tesvilaLogo from "../Logo original remove background.png";
+import { LoginScreen } from "./login/login-screen";
+import { setClientSession, type ClientSession } from "@/lib/client-auth";
 import {
   InventoryOperations,
   SalesReport,
@@ -385,9 +390,10 @@ const navGroups = [
   ],
 ] as const;
 
-function TesvilaShell() {
+function TesvilaShell({ session, onLogout }: { session: ClientSession; onLogout: () => void }) {
   const [page, setPage] = useState<NavKey>("Dashboard");
   const [menu, setMenu] = useState(false);
+  const [accountMenu, setAccountMenu] = useState(false);
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<string | null>(null);
   const [gst, setGst] = useState(9);
@@ -402,19 +408,26 @@ function TesvilaShell() {
     return () => window.removeEventListener("tesvila-toast", handle);
   }, []);
   const title = page;
-  const today = "Tuesday, 14 July 2026";
+  const today = new Intl.DateTimeFormat("en-SG", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
+  const visibleNavGroups = navGroups;
+  const initials = session.username.slice(0, 2).toUpperCase();
   return (
     <div className="shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
         <div className="brand">
-          <div className="logo">TV</div>
+          <div className="sidebar-logo"><Image src={tesvilaLogo} alt="TESVILA logo" priority /></div>
           <div>
             <strong>TESVILA</strong>
             <span>Operations Suite</span>
           </div>
         </div>
         <div className="nav">
-          {navGroups.map(([group, items]) => (
+          {visibleNavGroups.map(([group, items]) => (
             <div key={group}>
               <div className="nav-section">{group}</div>
               {items.map(([n, I]) => (
@@ -433,13 +446,16 @@ function TesvilaShell() {
             </div>
           ))}
         </div>
-        <div className="profile">
-          <div className="avatar">ST</div>
+        <div className="profile-wrap">
+        {accountMenu && <div className="account-menu"><button onClick={onLogout}><LogOut size={14} /> Log Out</button></div>}
+        <button className="profile" onClick={() => setAccountMenu((value) => !value)} aria-expanded={accountMenu}>
+          <div className="avatar">{initials}</div>
           <div>
-            <b>Sarah Tan</b>
+            <b>{session.username}</b>
             <span>Administrator</span>
           </div>
           <ChevronDown size={13} />
+        </button>
         </div>
       </aside>
       <main className="main">
@@ -458,16 +474,10 @@ function TesvilaShell() {
           </div>
           <div className="top-actions">
             <button
-              className="icon-btn"
-              onClick={() => notify("You’re all caught up")}
-            >
-              <Bell size={16} />
-            </button>
-            <button
               className="btn primary"
               onClick={() => setPage("Create Invoice & DO")}
             >
-              <Plus size={14} /> New document
+              <Plus size={14} /> Invoice
             </button>
           </div>
         </header>
@@ -501,9 +511,24 @@ function TesvilaShell() {
   );
 }
 export default function TesvilaApp() {
+  const [session, setSession] = useState<ClientSession | null>(null);
+  useEffect(() => {
+    const expire = () => setSession(null);
+    window.addEventListener("tesvila-session-expired", expire);
+    return () => window.removeEventListener("tesvila-session-expired", expire);
+  }, []);
+  function login(nextSession: ClientSession) {
+    setClientSession(nextSession);
+    setSession(nextSession);
+  }
+  function logout() {
+    setClientSession(null);
+    setSession(null);
+  }
+  if (!session) return <LoginScreen onLogin={login} />;
   return (
     <DocumentProvider>
-      <TesvilaShell />
+      <TesvilaShell session={session} onLogout={logout} />
     </DocumentProvider>
   );
 }
@@ -520,7 +545,7 @@ type Ctx = {
 function renderPage(page: NavKey, c: Ctx) {
   switch (page) {
     case "Dashboard":
-      return <Dashboard c={c} />;
+      return <DashboardManager />;
     case "Customers":
   return <CustomerManager notify={c.notify} />;
     case "Products":
@@ -1729,7 +1754,7 @@ function Reports({ c }: { c: Ctx }) {
                 <Tooltip />
                 <Area
                   dataKey="sales"
-                  stroke="#2f7d55"
+                  stroke="#053a7c"
                   fill="#dcece3"
                   strokeWidth={2}
                 />
@@ -1747,7 +1772,7 @@ function Reports({ c }: { c: Ctx }) {
                 <XAxis dataKey="m" fontSize={9} />
                 <YAxis fontSize={9} />
                 <Tooltip />
-                <Bar dataKey="sales" fill="#2f7d55" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sales" fill="#053a7c" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="cost" fill="#d9b66f" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

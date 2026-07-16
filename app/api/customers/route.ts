@@ -1,28 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireApiSession } from "@/lib/auth-session";
+import { createServerDatabase } from "@/lib/supabase-server";
 
 function database() {
-  const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.SUPABASE_URL;
-
-  const key =
-    process.env.SUPABASE_SECRET_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !key) {
-    return null;
-  }
-
-  return createClient(url, key, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
+  return createServerDatabase();
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireApiSession(request);
+  if (auth.response) return auth.response;
   const db = database();
 
   if (!db) {
@@ -76,6 +62,8 @@ return NextResponse.json({
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireApiSession(request);
+  if (auth.response) return auth.response;
   const db = database();
 
   if (!db) {
@@ -107,10 +95,7 @@ export async function POST(request: NextRequest) {
       contact_number: body.contactNumber?.trim() || null,
       email: body.email?.trim() || null,
       billing_address: body.billingAddress?.trim() || null,
-      delivery_address:
-        body.deliveryAddress?.trim() ||
-        body.billingAddress?.trim() ||
-        null,
+      delivery_address: body.deliveryAddress?.trim() || null,
       credit_terms: body.creditTerms?.trim() || null,
     })
     .select()
@@ -130,6 +115,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const auth = await requireApiSession(request);
+  if (auth.response) return auth.response;
   const db = database();
 
   if (!db) {
@@ -164,10 +151,7 @@ export async function PATCH(request: NextRequest) {
       contact_number: body.contactNumber?.trim() || null,
       email: body.email?.trim() || null,
       billing_address: body.billingAddress?.trim() || null,
-      delivery_address:
-        body.deliveryAddress?.trim() ||
-        body.billingAddress?.trim() ||
-        null,
+      delivery_address: body.deliveryAddress?.trim() || null,
       credit_terms: body.creditTerms?.trim() || null,
       updated_at: new Date().toISOString(),
     })
@@ -189,6 +173,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await requireApiSession(request);
+  if (auth.response) return auth.response;
   const db = database();
 
   if (!db) {

@@ -1,87 +1,73 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
-const templateRoot = new URL("../", import.meta.url);
-const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
+const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-}
-
-test("server-renders the starter loading skeleton", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, developmentPreviewMeta);
-  assert.match(html, /<title>Your site is taking shape<\/title>/i);
-  assert.match(html, /Codex is working/);
-  assert.match(html, /Your site is taking shape/);
-  assert.match(html, /Codex is building the first version/);
-  assert.match(html, /react-loading-skeleton/);
-  assert.match(html, /role="status"/);
-});
-
-test("keeps the loading skeleton scoped and disposable", async () => {
-  const [preview, css, page, layout, packageJson, files] = await Promise.all([
-    readFile(new URL("SkeletonPreview.tsx", previewRoot), "utf8"),
-    readFile(new URL("preview.css", previewRoot), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readdir(previewRoot),
+test("uses an independent, non-persistent signed session for every tab", async () => {
+  const [session, clientAuth, login, shell] = await Promise.all([
+    read("lib/auth-session.ts"),
+    read("lib/client-auth.ts"),
+    read("app/api/auth/login/route.ts"),
+    read("app/tesvila-app.tsx"),
   ]);
 
-  assert.deepEqual(files.sort(), ["SkeletonPreview.tsx", "preview.css"]);
-  assert.match(preview, /from "react-loading-skeleton"/);
-  assert.match(preview, /baseColor="#eceae7"/);
-  assert.match(preview, /highlightColor="#f9f8f6"/);
-  assert.match(preview, /duration=\{2\.8\}/);
-  assert.match(preview, /sites-skeleton-search-placeholder/);
-  assert.match(packageJson, /"react-loading-skeleton": "3\.5\.0"/);
+  assert.match(session, /HMAC/);
+  assert.match(session, /Authorization|authorization/);
+  assert.doesNotMatch(session, /document\.cookie|localStorage|sessionStorage/);
+  assert.match(clientAuth, /let currentSession/);
+  assert.doesNotMatch(clientAuth, /localStorage|sessionStorage|indexedDB/);
+  assert.match(login, /signInWithPassword/);
+  assert.match(login, /Zi Jian/);
+  assert.match(login, /Wei Jian/);
+  assert.match(login, /access:\s*"full"/);
+  assert.doesNotMatch(login, /password:\s*["'][^"']+["']/);
+  assert.match(shell, /setClientSession\(null\)/);
+  assert.doesNotMatch(shell, /Caught Up|Bell/);
+});
 
-  const shellIndex = preview.indexOf('className="sites-skeleton-shell"');
-  const statusIndex = preview.indexOf('className="sites-skeleton-status"');
-  assert.ok(shellIndex >= 0 && statusIndex > shellIndex);
-  assert.match(css, /position:\s*fixed/);
-  assert.match(css, /inset:\s*0/);
-  assert.match(css, /opacity:\s*0\.52/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.doesNotMatch(css, /#020617|canvas|pets|progress/i);
-  assert.doesNotMatch(
-    preview,
-    /loading-spinner|status-mark|status-progress|canvas|cookie|random/i,
-  );
+test("uses the TESVILA blue theme and repository logo", async () => {
+  const [css, shell] = await Promise.all([
+    read("app/globals.css"),
+    read("app/tesvila-app.tsx"),
+  ]);
+  assert.match(css, /--tesvila-blue:\s*#053a7c/i);
+  assert.match(css, /background:\s*var\(--tesvila-blue\)/);
+  assert.match(shell, /Logo original remove background\.png/);
+  assert.match(shell, /> Invoice/);
+  assert.doesNotMatch(shell, /> New document/);
+});
 
-  assert.match(page, /export const metadata:\s*Metadata/);
-  assert.match(page, /"codex-preview": "development"/);
-  assert.match(page, /<SkeletonPreview \/>/);
-  assert.match(layout, /title:\s*"Starter Project"/);
-  assert.doesNotMatch(layout, /codex-preview|_sites-preview|themeColor|\bViewport\b/);
-  assert.doesNotMatch(css, /(^|\s)(html|body)\s*\{/m);
+test("document workflow is database-backed, empty by default, and validates relationships", async () => {
+  const [workflow, documentsApi, migration, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/api/documents/route.ts"),
+    read("supabase/migrations/202607160001_document_snapshots_and_issuers.sql"),
+    read("lib/supabase-server.ts"),
+  ]);
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(workflow, /useState<DocumentItem\[\]>\(\[\]\)/);
+  assert.match(workflow, /Billing Address/);
+  assert.match(workflow, /Delivery Address/);
+  assert.match(workflow, /Please select a valid SKU/);
+  assert.match(workflow, /Issued By/);
+  assert.match(documentsApi, /issuedByUserId:\s*auth\.session\.userId/);
+  assert.match(migration, /client_request_id/);
+  assert.match(migration, /where id=nullif\(item->>'productId'/);
+  assert.match(migration, /next_invoice_number\(\)/);
+  assert.match(migration, /next_do_number/);
+});
 
-  await assert.rejects(
-    access(new URL("public/_sites-preview", templateRoot)),
-  );
+test("dashboard reads real database records and product export is removed", async () => {
+  const [dashboardApi, dashboard, productManager] = await Promise.all([
+    read("app/api/dashboard/route.ts"),
+    read("app/dashboard-manager.tsx"),
+    read("app/product-manager.tsx"),
+  ]);
+  assert.match(dashboardApi, /from\("invoices"\)/);
+  assert.match(dashboardApi, /from\("products"\)/);
+  assert.match(dashboardApi, /unit_cost/);
+  assert.match(dashboard, /Profit Guide/);
+  assert.match(dashboard, /Monthly Sales/);
+  assert.doesNotMatch(productManager, /tesvila-products\.csv|> Export/);
 });

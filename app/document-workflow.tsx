@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import tesvilaLogo from "../Logo original remove background.png";
+import { authFetch, getClientSession } from "@/lib/client-auth";
 
 export type DocumentItem = {
   id: string;
@@ -38,8 +39,10 @@ export type DocumentItem = {
   remarks: string;
 };
 export type CustomerSnapshot = {
+  customerId?: string;
   name: string;
-  address: string;
+  billingAddress: string;
+  deliveryAddress: string;
   attention: string;
   phone: string;
 };
@@ -60,6 +63,7 @@ export type InvoiceRecord = {
   installationOption: string;
   remarks: string;
   createdBy: string;
+  issuedByUserId?: string;
   createdAt: string;
 };
 export type DORecord = {
@@ -76,7 +80,28 @@ export type DORecord = {
   status: string;
   remarks: string;
   createdBy: string;
+  issuedByUserId?: string;
   createdAt: string;
+};
+
+type CustomerOption = {
+  id: string;
+  company_name: string;
+  contact_person: string | null;
+  contact_number: string | null;
+  billing_address: string | null;
+  delivery_address: string | null;
+};
+
+type ProductOption = {
+  id: string;
+  sku: string;
+  product_model: string;
+  product_type: string;
+  description: string;
+  brand: string;
+  selling_price: number;
+  cost_price: number;
 };
 type Store = {
   invoices: InvoiceRecord[];
@@ -96,6 +121,7 @@ type InvoiceDraft = Omit<
 >;
 type DODraft = Omit<DORecord, "id" | "doNumber" | "createdAt">;
 
+/* Historical UI fixtures intentionally disabled. New forms and histories load only from Supabase.
 const seedItems: DocumentItem[] = [
   {
     id: "i1",
@@ -218,6 +244,7 @@ const seededDOs: DORecord[] = [
     createdAt: "2026-07-12T08:45:00+08:00",
   },
 ];
+*/
 const DocumentContext = createContext<Store | null>(null);
 
 export function DocumentProvider({
@@ -227,14 +254,14 @@ export function DocumentProvider({
   children: React.ReactNode;
   notify?: (s: string) => void;
 }) {
-  const [invoices, setInvoices] = useState(seededInvoices),
-    [deliveryOrders, setDOs] = useState(seededDOs);
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]),
+    [deliveryOrders, setDOs] = useState<DORecord[]>([]);
   const message =
     notify ||
     ((s: string) =>
       window.dispatchEvent(new CustomEvent("tesvila-toast", { detail: s })));
   async function loadDocuments() {
-    const response = await fetch("/api/documents", { cache: "no-store" });
+    const response = await authFetch("/api/documents", { cache: "no-store" });
     if (!response.ok) return;
     const data = await response.json();
     setInvoices(data.invoices || []);
@@ -246,7 +273,7 @@ export function DocumentProvider({
     loadDocuments().catch(() => {});
   }, []);
   async function request(body: unknown, method = "POST") {
-    const response = await fetch("/api/documents", {
+    const response = await authFetch("/api/documents", {
       method,
       headers: { "content-type": "application/json" },
       body: method === "GET" ? undefined : JSON.stringify(body),
@@ -331,6 +358,68 @@ export function DocumentWorkflow({
   return <DocumentTable invoice={mode === "invoice-table"} />;
 }
 
+function useDocumentReferenceData() {
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      authFetch("/api/customers", { cache: "no-store" }),
+      authFetch("/api/products", { cache: "no-store" }),
+    ])
+      .then(async ([customerResponse, productResponse]) => {
+        const customerData = await customerResponse.json();
+        const productData = await productResponse.json();
+        if (!customerResponse.ok) throw new Error(customerData.error || "Unable to load customers.");
+        if (!productResponse.ok) throw new Error(productData.error || "Unable to load products.");
+        if (active) {
+          setCustomers(customerData.customers || []);
+          setProducts(productData.products || []);
+        }
+      })
+      .catch((loadError) => active && setError(loadError instanceof Error ? loadError.message : "Unable to load document data."))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, []);
+  return { customers, products, loading, error };
+}
+
+function emptyItem(): DocumentItem {
+  return {
+    id: crypto.randomUUID(),
+    productId: "",
+    model: "",
+    sku: "",
+    type: "",
+    description: "",
+    brand: "",
+    quantity: 1,
+    unitPrice: 0,
+    unitCost: 0,
+    discount: 0,
+    remarks: "",
+  };
+}
+
+function itemFromProduct(item: DocumentItem, product: ProductOption | undefined, typedSku: string): DocumentItem {
+  if (!product) {
+    return { ...item, productId: "", sku: typedSku, model: "", type: "", description: "", brand: "", unitPrice: 0, unitCost: 0 };
+  }
+  return {
+    ...item,
+    productId: product.id,
+    sku: product.sku,
+    model: product.product_model,
+    type: product.product_type,
+    description: product.description,
+    brand: product.brand,
+    unitPrice: Number(product.selling_price || 0),
+    unitCost: Number(product.cost_price || 0),
+  };
+}
+
 function DocumentForm({
   invoice = false,
   onNavigate,
@@ -339,17 +428,21 @@ function DocumentForm({
   onNavigate?: (p: string) => void;
 }) {
   const store = useDocuments();
-  const [items, setItems] = useState<DocumentItem[]>(
-    seedItems.map((x) => ({ ...x, id: crypto.randomUUID() })),
-  );
+  const reference = useDocumentReferenceData();
+  const session = getClientSession();
+  const [items, setItems] = useState<DocumentItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [customerName, setCustomerName] = useState(customer.name),
-    [address, setAddress] = useState(customer.address),
-    [attention, setAttention] = useState(customer.attention),
-    [phone, setPhone] = useState(customer.phone),
-    [po, setPO] = useState("PO-MB-0714"),
-    [deposit, setDeposit] = useState(2000);
+  const [customerId, setCustomerId] = useState(""),
+    [customerName, setCustomerName] = useState(""),
+    [billingAddress, setBillingAddress] = useState(""),
+    [deliveryAddress, setDeliveryAddress] = useState(""),
+    [attention, setAttention] = useState(""),
+    [phone, setPhone] = useState(""),
+    [po, setPO] = useState(""),
+    [remarks, setRemarks] = useState(""),
+    [deposit, setDeposit] = useState(0),
+    [clientRequestId] = useState(() => crypto.randomUUID());
   const subtotal = items.reduce(
       (s, i) => s + i.quantity * i.unitPrice - (i.discount || 0),
       0,
@@ -364,32 +457,57 @@ function DocumentForm({
     setItems((rows) =>
       rows.map((r) => (r.id === id ? { ...r, [key]: value } : r)),
     );
-  const add = () =>
-    setItems((r) => [
-      ...r,
-      {
-        id: crypto.randomUUID(),
-        model: "",
-        sku: "",
-        type: "",
-        description: "",
-        brand: "Tesvila",
-        quantity: 1,
-        unitPrice: 0,
-        remarks: "",
-      },
-    ]);
+  const add = () => setItems((rows) => [...rows, emptyItem()]);
+  function chooseCustomer(value: string) {
+    const match = reference.customers.find((entry) => entry.company_name.toLowerCase() === value.trim().toLowerCase());
+    setCustomerName(value);
+    if (match) {
+      setCustomerId(match.id);
+      setCustomerName(match.company_name);
+      setAttention(match.contact_person || "");
+      setPhone(match.contact_number || "");
+      setBillingAddress(match.billing_address || "");
+      setDeliveryAddress(match.delivery_address || "");
+    } else if (customerId) {
+      setCustomerId("");
+      setAttention("");
+      setPhone("");
+      setBillingAddress("");
+      setDeliveryAddress("");
+    }
+  }
+  function chooseProduct(id: string, value: string) {
+    const product = reference.products.find((entry) => entry.sku.toLowerCase() === value.trim().toLowerCase());
+    setItems((rows) => rows.map((row) => row.id === id ? itemFromProduct(row, product, value) : row));
+  }
+  function validationError() {
+    if (!customerName.trim()) return "Customer company is required.";
+    if (!billingAddress.trim()) return "Billing Address is required.";
+    if (!items.length) return "Add at least one item before saving.";
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index];
+      const product = reference.products.find((entry) => entry.id === item.productId && entry.sku === item.sku);
+      if (!product) return `Item ${index + 1}: Please select a valid SKU.`;
+      if (item.quantity <= 0) return `Item ${index + 1}: Quantity must be greater than zero.`;
+      if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
+    }
+    return "";
+  }
   async function submit() {
-    setError("");
+    const validation = validationError();
+    setError(validation);
+    if (validation) return;
     setSaving(true);
     try {
       const common = {
-        customer: { name: customerName, address, attention, phone },
+        clientRequestId,
+        customer: { customerId: customerId || undefined, name: customerName, billingAddress, deliveryAddress, attention, phone },
         items,
-        createdBy: "Sarah Tan",
-        remarks: "",
+        createdBy: session?.displayName || "Tesvila User",
+        issuedByUserId: session?.userId,
+        remarks,
         deliveryDate: new Date().toISOString().slice(0, 10),
-        deliveryAddress: address,
+        deliveryAddress,
         deliveryContact: attention,
         deliveryPhone: phone,
         status: "Scheduled",
@@ -401,7 +519,7 @@ function DocumentForm({
           poNumber: po,
           gstRate: 9,
           deposit,
-          paymentStatus: "Unpaid",
+          paymentStatus: "Issued",
           paymentMethod: "PayNow / Bank transfer",
           collectionMethod: "Delivery by Tesvila",
           installationOption: "Supply only",
@@ -454,22 +572,22 @@ function DocumentForm({
             <p>Number assigned atomically on save</p>
           </div>
         </div>
-        <div className="sheet-info">
-          <div className="field">
+        <div className="document-customer-fields">
+          <div className="field customer-combobox">
             <label>Customer company *</label>
             <input
               className="input"
+              list="document-customers"
+              placeholder="Search an existing customer or enter a company name"
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
+              onChange={(e) => chooseCustomer(e.target.value)}
             />
-            <label>Customer address *</label>
-            <textarea
-              className="input"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-            />
+            <datalist id="document-customers">
+              {reference.customers.map((entry) => <option key={entry.id} value={entry.company_name} />)}
+            </datalist>
+            {!customerId && customerName && <small className="field-help">Using this company for this document only. It will not be added to Customers automatically.</small>}
           </div>
-          <div className="grid-2">
+          <div className="grid-2 document-contact-row">
             <div className="field">
               <label>Attention person</label>
               <input
@@ -486,35 +604,22 @@ function DocumentForm({
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
-            {invoice && (
-              <>
-                <div className="field">
-                  <label>PO number</label>
-                  <input
-                    className="input"
-                    value={po}
-                    onChange={(e) => setPO(e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <label>Deposit</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min="0"
-                    value={deposit}
-                    onChange={(e) => setDeposit(Number(e.target.value))}
-                  />
-                </div>
-              </>
-            )}
           </div>
+          <div className={`document-address-grid ${invoice ? "stacked" : ""}`}>
+            <div className="field"><label>Billing Address *</label><textarea className="input address-input" value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} /></div>
+            <div className="field"><label>Delivery Address</label><textarea className="input address-input" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} /></div>
+          </div>
+          {invoice && <div className="grid-2 document-meta-row">
+            <div className="field"><label>PO number</label><input className="input" value={po} onChange={(e) => setPO(e.target.value)} /></div>
+            <div className="field"><label>Deposit</label><input className="input" type="number" min="0" value={deposit} onChange={(e) => setDeposit(Number(e.target.value))} /></div>
+          </div>}
+          <div className="field"><label>Remarks</label><textarea className="input" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>
         </div>
         <div className="items-editor">
           <div className="edit-row header">
             <div></div>
-            <div>Product model</div>
             <div>SKU</div>
+            <div>Product model</div>
             <div>Product type</div>
             <div>Description / brand</div>
             <div>Qty</div>
@@ -531,37 +636,29 @@ function DocumentForm({
               <div>
                 <input
                   className="input"
-                  value={row.model}
-                  onChange={(e) => update(row.id, "model", e.target.value)}
-                />
-              </div>
-              <div>
-                <input
-                  className="input"
+                  list={`product-options-${row.id}`}
+                  placeholder={reference.loading ? "Loading products..." : "Search SKU or model"}
                   value={row.sku}
-                  onChange={(e) => update(row.id, "sku", e.target.value)}
+                  onChange={(e) => chooseProduct(row.id, e.target.value)}
                 />
+                <datalist id={`product-options-${row.id}`}>
+                  {reference.products.map((product) => <option key={product.id} value={product.sku}>{product.product_model}</option>)}
+                </datalist>
+                {row.sku && !row.productId && <small className="invalid-help">No matching product found.</small>}
               </div>
               <div>
-                <input
-                  className="input"
-                  value={row.type}
-                  onChange={(e) => update(row.id, "type", e.target.value)}
-                />
+                <input className="input" readOnly value={row.model} />
               </div>
               <div>
-                <input
-                  className="input"
-                  value={row.description}
-                  onChange={(e) =>
-                    update(row.id, "description", e.target.value)
-                  }
-                />
+                <input className="input" readOnly value={row.type} />
+              </div>
+              <div>
+                <input className="input" readOnly value={row.description} />
                 <input
                   className="input"
                   style={{ marginTop: 4 }}
                   value={row.brand}
-                  onChange={(e) => update(row.id, "brand", e.target.value)}
+                  readOnly
                 />
               </div>
               <div>
@@ -603,7 +700,6 @@ function DocumentForm({
               <div className="row" style={{ gap: 3 }}>
                 <button
                   className="btn sm danger"
-                  disabled={items.length === 1}
                   onClick={() =>
                     setItems((x) => x.filter((i) => i.id !== row.id))
                   }
@@ -617,6 +713,7 @@ function DocumentForm({
         <button className="btn mt" onClick={add}>
           <Plus size={12} /> Add item
         </button>
+        {reference.error && <div className="inline-error">{reference.error}</div>}
         {invoice && (
           <div className="totals">
             <div className="total-line">
@@ -646,18 +743,11 @@ function DocumentForm({
             {error}
           </div>
         )}
-        <div className="row between mt">
-          <span className="section-sub">
-            No PDF is generated during this save.
-          </span>
-          <button
+        <div className="row between mt document-footer-actions">
+          <div><div className="issued-by-field"><span>Issued By</span><b>{session?.displayName || "—"}</b></div><span className="section-sub">No PDF is generated during this save.</span></div>
+          <div className="row"><button className="btn" disabled={saving} onClick={() => onNavigate?.("Dashboard")}>Cancel</button><button
             className="btn primary"
-            disabled={
-              saving ||
-              !customerName ||
-              !address ||
-              items.some((x) => !x.model || x.quantity <= 0 || x.unitPrice < 0)
-            }
+            disabled={saving || reference.loading}
             onClick={submit}
           >
             <Save size={13} />
@@ -666,7 +756,7 @@ function DocumentForm({
               : invoice
                 ? "Save Invoice & DO"
                 : "Save Delivery Order"}
-          </button>
+          </button></div>
         </div>
       </div>
     </>
@@ -912,6 +1002,7 @@ function RecordModal({
   close: () => void;
 }) {
   const store = useDocuments();
+  const reference = useDocumentReferenceData();
   const [draft, setDraft] = useState<InvoiceRecord | DORecord>(() => ({
       ...record,
       customer: { ...record.customer },
@@ -930,6 +1021,16 @@ function RecordModal({
       ...current,
       customer: { ...current.customer, [field]: value },
     }));
+  const chooseModalCustomer = (value: string) => {
+    const match = reference.customers.find((entry) => entry.company_name.toLowerCase() === value.trim().toLowerCase());
+    setDraft((current) => ({
+      ...current,
+      customer: match
+        ? { customerId: match.id, name: match.company_name, attention: match.contact_person || "", phone: match.contact_number || "", billingAddress: match.billing_address || "", deliveryAddress: match.delivery_address || "" }
+        : { ...current.customer, customerId: undefined, name: value },
+      ...(!invoice && match ? { deliveryAddress: match.delivery_address || "", deliveryContact: match.contact_person || "", deliveryPhone: match.contact_number || "" } : {}),
+    }) as InvoiceRecord | DORecord);
+  };
   const setItem = (id: string, field: keyof DocumentItem, value: unknown) =>
     setDraft(
       (current) =>
@@ -940,7 +1041,30 @@ function RecordModal({
           ),
         }) as InvoiceRecord | DORecord,
     );
+  const chooseModalProduct = (id: string, value: string) => {
+    const product = reference.products.find((entry) => entry.sku.toLowerCase() === value.trim().toLowerCase());
+    setDraft((current) => ({
+      ...current,
+      items: current.items.map((item) => item.id === id ? itemFromProduct(item, product, value) : item),
+    }) as InvoiceRecord | DORecord);
+  };
+  function editValidationError() {
+    if (!draft.customer.name.trim()) return "Customer company is required.";
+    if (!draft.customer.billingAddress.trim()) return "Billing Address is required.";
+    for (let index = 0; index < draft.items.length; index++) {
+      const item = draft.items[index];
+      if (!reference.products.some((product) => product.id === item.productId && product.sku === item.sku)) return `Item ${index + 1}: Please select a valid SKU.`;
+      if (item.quantity <= 0) return `Item ${index + 1}: Quantity must be greater than zero.`;
+      if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
+    }
+    return "";
+  }
   async function save() {
+    const validation = editValidationError();
+    if (validation) {
+      store.notify(validation);
+      return;
+    }
     setSaving(true);
     try {
       await store.update(invoice ? "invoice" : "delivery_order", draft);
@@ -979,9 +1103,11 @@ function RecordModal({
               <input
                 className="input"
                 disabled={readOnly}
+                list="edit-document-customers"
                 value={draft.customer.name}
-                onChange={(e) => setCustomer("name", e.target.value)}
+                onChange={(e) => chooseModalCustomer(e.target.value)}
               />
+              <datalist id="edit-document-customers">{reference.customers.map((entry) => <option key={entry.id} value={entry.company_name} />)}</datalist>
             </div>
             <div className="field">
               <label>Attention</label>
@@ -992,14 +1118,29 @@ function RecordModal({
                 onChange={(e) => setCustomer("attention", e.target.value)}
               />
             </div>
-            <div className="field" style={{ gridColumn: "span 2" }}>
-              <label>Address</label>
+            <div className="field">
+              <label>Contact Number</label>
+              <input className="input" disabled={readOnly} value={draft.customer.phone} onChange={(e) => setCustomer("phone", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Issued By</label>
+              <input className="input" disabled value={draft.createdBy} />
+            </div>
+            <div className="field">
+              <label>Billing Address</label>
               <textarea
                 className="input"
                 disabled={readOnly}
-                value={draft.customer.address}
-                onChange={(e) => setCustomer("address", e.target.value)}
+                value={draft.customer.billingAddress}
+                onChange={(e) => setCustomer("billingAddress", e.target.value)}
               />
+            </div>
+            <div className="field">
+              <label>Delivery Address</label>
+              <textarea className="input" disabled={readOnly} value={draft.customer.deliveryAddress} onChange={(e) => {
+                setCustomer("deliveryAddress", e.target.value);
+                if (!invoice) setField("deliveryAddress", e.target.value);
+              }} />
             </div>
             <div className="field">
               <label>{invoice ? "Invoice date" : "Delivery date"}</label>
@@ -1070,24 +1211,14 @@ function RecordModal({
                 </div>
               </>
             )}
-            {!invoice && (
-              <div className="field" style={{ gridColumn: "span 2" }}>
-                <label>Delivery address</label>
-                <textarea
-                  className="input"
-                  disabled={readOnly}
-                  value={delivery.deliveryAddress}
-                  onChange={(e) => setField("deliveryAddress", e.target.value)}
-                />
-              </div>
-            )}
           </div>
           <div className="table-wrap mt">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Model</th>
                   <th>SKU</th>
+                  <th>Product Model</th>
+                  <th>Product Type</th>
                   <th>Description</th>
                   <th>Qty</th>
                   <th>Price</th>
@@ -1103,27 +1234,20 @@ function RecordModal({
                       <input
                         className="input"
                         disabled={readOnly}
-                        value={i.model}
-                        onChange={(e) => setItem(i.id, "model", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="input"
-                        disabled={readOnly}
+                        list={`edit-product-options-${i.id}`}
                         value={i.sku}
-                        onChange={(e) => setItem(i.id, "sku", e.target.value)}
+                        onChange={(e) => chooseModalProduct(i.id, e.target.value)}
                       />
+                      <datalist id={`edit-product-options-${i.id}`}>{reference.products.map((product) => <option key={product.id} value={product.sku}>{product.product_model}</option>)}</datalist>
                     </td>
                     <td>
-                      <input
-                        className="input"
-                        disabled={readOnly}
-                        value={i.description}
-                        onChange={(e) =>
-                          setItem(i.id, "description", e.target.value)
-                        }
-                      />
+                      <input className="input" disabled value={i.model} />
+                    </td>
+                    <td>
+                      <input className="input" disabled value={i.type} />
+                    </td>
+                    <td>
+                      <input className="input" disabled value={i.description} />
                     </td>
                     <td>
                       <input
@@ -1203,16 +1327,7 @@ function RecordModal({
                       items: [
                         ...current.items,
                         {
-                          id: crypto.randomUUID(),
-                          model: "",
-                          sku: "",
-                          type: "",
-                          description: "",
-                          brand: "",
-                          quantity: 1,
-                          unitPrice: 0,
-                          discount: 0,
-                          remarks: "",
+                          ...emptyItem(),
                         },
                       ],
                     }) as InvoiceRecord | DORecord,
@@ -1282,10 +1397,7 @@ function RecordModal({
             {!readOnly && (
               <button
                 className="btn primary"
-                disabled={
-                  saving ||
-                  draft.items.some((i) => !i.model || !i.sku || i.quantity <= 0)
-                }
+                disabled={saving || reference.loading || !draft.items.length}
                 onClick={save}
               >
                 <Check size={12} /> {saving ? "Saving…" : "Save changes"}
@@ -1434,9 +1546,10 @@ function invoiceTableHead(kit: PdfKit, page: PDFPage, y: number) {
     color: GREEN,
   });
   [
-    ["ITEM", 42],
-    ["SUPPLY SANITARY WARE / DESCRIPTION", 75],
-    ["QTY", 390],
+    ["SKU", 42],
+    ["PRODUCT MODEL", 105],
+    ["TYPE / DESCRIPTION", 205],
+    ["QTY", 397],
     ["UNIT PRICE", 430],
     ["AMOUNT", 505],
   ].forEach(([t, x]) =>
@@ -1459,8 +1572,9 @@ function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
     color: GREEN,
   });
   [
-    ["MODEL", 42],
-    ["TYPE / DESCRIPTION / BRAND", 145],
+    ["SKU", 42],
+    ["PRODUCT MODEL", 105],
+    ["TYPE / DESCRIPTION / BRAND", 190],
     ["QTY", 438],
     ["REMARKS", 475],
   ].forEach(([t, x]) =>
@@ -1481,35 +1595,26 @@ export async function generateInvoicePdf(inv: InvoiceRecord) {
   let page = doc.addPage([595, 842]);
   kit.pages.push(page);
   companyHeader(kit, page, "TAX INVOICE", inv.invoiceNumber);
-  page.drawText("BILL TO", {
+  page.drawText("BILLING ADDRESS", {
     x: 36,
     y: 730,
     size: 7,
     font: bold,
     color: MUTED,
   });
-  drawLines(
-    page,
-    bold,
-    10,
-    wrap(bold, 10, inv.customer.name, 260),
-    36,
-    715,
-    12,
-  );
-  drawLines(
-    page,
-    regular,
-    8,
-    wrap(regular, 8, inv.customer.address, 260),
-    36,
-    695,
-    10,
-  );
-  page.drawText(
-    `Attn: ${inv.customer.attention}  |  Tel: ${inv.customer.phone}`,
-    { x: 36, y: 666, size: 8, font: regular, color: MUTED },
-  );
+  const customerNameLines = wrap(bold, 10, inv.customer.name, 260);
+  drawLines(page, bold, 10, customerNameLines, 36, 715, 12);
+  let customerY = 715 - customerNameLines.length * 12 - 5;
+  const billingLines = wrap(regular, 8, inv.customer.billingAddress, 260);
+  drawLines(page, regular, 8, billingLines, 36, customerY, 10);
+  customerY -= billingLines.length * 10 + 13;
+  page.drawText("DELIVERY ADDRESS", { x: 36, y: customerY, size: 7, font: bold, color: MUTED });
+  customerY -= 14;
+  const deliveryLines = wrap(regular, 8, inv.customer.deliveryAddress, 260);
+  drawLines(page, regular, 8, deliveryLines, 36, customerY, 10);
+  customerY -= deliveryLines.length * 10 + 12;
+  page.drawText(`Attn: ${inv.customer.attention || "—"}  |  Tel: ${inv.customer.phone || "—"}`, { x: 36, y: customerY, size: 8, font: regular, color: MUTED });
+  customerY -= 18;
   [
     ["Invoice No.", inv.invoiceNumber],
     ["PO No.", inv.poNumber || "—"],
@@ -1531,30 +1636,33 @@ export async function generateInvoicePdf(inv: InvoiceRecord) {
       color: INK,
     });
   });
-  let y = invoiceTableHead(kit, page, 642);
+  let y = invoiceTableHead(kit, page, Math.min(610, customerY));
   const footerReserve = 250;
   for (let index = 0; index < inv.items.length; index++) {
     const item = inv.items[index];
     const desc = wrap(
       regular,
       7.5,
-      `${item.model} — ${item.description} · ${item.brand}${item.remarks ? ` · ${item.remarks}` : ""}`,
-      300,
+      `${item.type} — ${item.description} · ${item.brand}${item.remarks ? ` · ${item.remarks}` : ""}`,
+      180,
     );
-    const h = Math.max(25, desc.length * 9 + 10);
+    const h = Math.max(
+      25,
+      Math.max(
+        desc.length,
+        wrap(regular, 7.2, item.sku, 54).length,
+        wrap(bold, 7.2, item.model, 88).length,
+      ) * 9 + 10,
+    );
     if (y - h < footerReserve) {
       page = doc.addPage([595, 842]);
       kit.pages.push(page);
       companyHeader(kit, page, "TAX INVOICE", inv.invoiceNumber, true);
       y = invoiceTableHead(kit, page, 735);
     }
-    page.drawText(String(index + 1), {
-      x: 46,
-      y: y - 10,
-      size: 8,
-      font: regular,
-    });
-    drawLines(page, regular, 7.5, desc, 75, y - 9, 9);
+    drawLines(page, regular, 7.2, wrap(regular, 7.2, item.sku, 54), 42, y - 9, 9);
+    drawLines(page, bold, 7.2, wrap(bold, 7.2, item.model, 88), 105, y - 9, 9);
+    drawLines(page, regular, 7.2, desc, 205, y - 9, 9);
     page.drawText(String(item.quantity), {
       x: 397,
       y: y - 10,
@@ -1710,27 +1818,20 @@ export async function generateDOPdf(order: DORecord) {
   let page = doc.addPage([595, 842]);
   kit.pages.push(page);
   companyHeader(kit, page, "DELIVERY ORDER", order.doNumber);
-  page.drawText("BILL TO", {
+  page.drawText("BILLING ADDRESS", {
     x: 36,
     y: 730,
     size: 7,
     font: bold,
     color: MUTED,
   });
-  page.drawText(order.customer.name, { x: 36, y: 715, size: 10, font: bold });
-  drawLines(
-    page,
-    regular,
-    8,
-    wrap(regular, 8, order.customer.address, 245),
-    36,
-    698,
-    10,
-  );
-  page.drawText(
-    `Attn: ${order.customer.attention}  |  ${order.customer.phone}`,
-    { x: 36, y: 668, size: 8, font: regular, color: MUTED },
-  );
+  const doCustomerLines = wrap(bold, 10, order.customer.name, 245);
+  drawLines(page, bold, 10, doCustomerLines, 36, 715, 12);
+  let doCustomerY = 715 - doCustomerLines.length * 12 - 5;
+  const doBillingLines = wrap(regular, 8, order.customer.billingAddress, 245);
+  drawLines(page, regular, 8, doBillingLines, 36, doCustomerY, 10);
+  doCustomerY -= doBillingLines.length * 10 + 12;
+  page.drawText(`Attn: ${order.customer.attention || "—"}  |  ${order.customer.phone || "—"}`, { x: 36, y: doCustomerY, size: 8, font: regular, color: MUTED });
   [
     ["Invoice No.", order.invoiceNumber || "—"],
     ["DO No.", order.doNumber],
@@ -1750,45 +1851,47 @@ export async function generateDOPdf(order: DORecord) {
       font: i === 1 ? bold : regular,
     });
   });
+  let doDetailY = Math.min(638, doCustomerY - 22);
   page.drawText("DELIVERY ADDRESS", {
     x: 36,
-    y: 638,
+    y: doDetailY,
     size: 7,
     font: bold,
     color: MUTED,
   });
-  drawLines(
-    page,
-    regular,
-    8,
-    wrap(regular, 8, order.deliveryAddress, 500),
-    36,
-    623,
-    10,
-  );
-  page.drawText(
-    `Contact: ${order.deliveryContact}  |  ${order.deliveryPhone}`,
-    { x: 36, y: 596, size: 8, font: regular, color: MUTED },
-  );
-  let y = doTableHead(kit, page, 574);
+  doDetailY -= 15;
+  const doDeliveryLines = wrap(regular, 8, order.customer.deliveryAddress || order.deliveryAddress, 500);
+  drawLines(page, regular, 8, doDeliveryLines, 36, doDetailY, 10);
+  doDetailY -= doDeliveryLines.length * 10 + 12;
+  page.drawText(`Contact: ${order.deliveryContact || "—"}  |  ${order.deliveryPhone || "—"}`, { x: 36, y: doDetailY, size: 8, font: regular, color: MUTED });
+  let y = doTableHead(kit, page, doDetailY - 22);
   const reserve = 245;
   for (const item of order.items) {
     const details = wrap(
         regular,
         7.5,
         `${item.type} — ${item.description} · Brand: ${item.brand}`,
-        280,
+        235,
       ),
       remarks = wrap(regular, 7, item.remarks || "—", 80);
-    const h = Math.max(27, Math.max(details.length, remarks.length) * 9 + 10);
+    const h = Math.max(
+      27,
+      Math.max(
+        details.length,
+        remarks.length,
+        wrap(regular, 7.2, item.sku, 54).length,
+        wrap(bold, 7.2, item.model, 75).length,
+      ) * 9 + 10,
+    );
     if (y - h < reserve) {
       page = doc.addPage([595, 842]);
       kit.pages.push(page);
       companyHeader(kit, page, "DELIVERY ORDER", order.doNumber, true);
       y = doTableHead(kit, page, 735);
     }
-    drawLines(page, bold, 7.5, wrap(bold, 7.5, item.model, 90), 42, y - 10, 9);
-    drawLines(page, regular, 7.5, details, 145, y - 10, 9);
+    drawLines(page, regular, 7.2, wrap(regular, 7.2, item.sku, 54), 42, y - 10, 9);
+    drawLines(page, bold, 7.2, wrap(bold, 7.2, item.model, 75), 105, y - 10, 9);
+    drawLines(page, regular, 7.2, details, 190, y - 10, 9);
     page.drawText(String(item.quantity), {
       x: 445,
       y: y - 10,
@@ -1895,6 +1998,13 @@ export async function generateDOPdf(order: DORecord) {
     y: sy - 47,
     size: 7,
     font: regular,
+  });
+  page.drawText(`Issued by: ${order.createdBy}`, {
+    x: 36,
+    y: sy - 47,
+    size: 7,
+    font: bold,
+    color: INK,
   });
   await savePdf(kit, `${order.doNumber}-Delivery-Order.pdf`);
 }
