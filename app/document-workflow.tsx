@@ -132,6 +132,7 @@ type ProductOption = {
   brand: string;
   selling_price: number;
   cost_price: number;
+  parent_product_id: string | null;
 };
 type Store = {
   invoices: InvoiceRecord[];
@@ -416,10 +417,11 @@ const invoiceItemsForDeliveryOrder = (
       const item = record.items.find((entry) => entry.id === currentItem.invoiceItemId);
       if (!item) return { ...currentItem, itemSource: "invoice" as const };
       const deliveredIncludingCurrent = item.previouslyDeliveredQuantity || 0;
-      const currentQuantity = currentItem.quantity || 0;
       const currentCountedQuantity = currentOrder?.status === "Cancelled"
         ? 0
-        : currentQuantity;
+        : (currentOrder?.items || [])
+          .filter((entry) => entry.invoiceItemId === item.id)
+          .reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
       const previouslyDeliveredQuantity = Math.max(
         0,
         deliveredIncludingCurrent - currentCountedQuantity,
@@ -444,10 +446,11 @@ const previouslyDeliveredItems = (
   record: InvoiceRecord,
   currentOrder?: DORecord,
 ) => record.items.map((item) => {
-  const currentItem = currentOrder?.items.find((entry) => entry.invoiceItemId === item.id);
   const currentCountedQuantity = currentOrder?.status === "Cancelled"
     ? 0
-    : currentItem?.quantity || 0;
+    : (currentOrder?.items || [])
+      .filter((entry) => entry.invoiceItemId === item.id)
+      .reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
   const previouslyDeliveredQuantity = Math.max(
     0,
     (item.previouslyDeliveredQuantity || 0) - currentCountedQuantity,
@@ -646,27 +649,39 @@ function selectDeliveryProduct(
   typedSku: string,
   linkedInvoice: InvoiceRecord | undefined,
   currentItems: DocumentItem[],
+  allProducts: ProductOption[],
   currentOrder?: DORecord,
 ) {
   const base = itemFromProduct(row, product, typedSku);
   if (!product) return { item: base };
+  if (allProducts.some((candidate) => candidate.parent_product_id === product.id)) {
+    return { item: row, error: `Please select a Child SKU for Parent SKU ${product.sku}.` };
+  }
   const otherItems = currentItems.filter((item) => item.id !== row.id);
   const invoiceMatches = (linkedInvoice?.items || []).filter(
-    (item) => item.productId === product.id || item.sku === product.sku,
+    (item) => item.productId === product.id || item.sku === product.sku || product.parent_product_id === item.productId,
   );
-  const availableInvoiceItem = invoiceMatches.find(
-    (item) => !otherItems.some((current) => current.invoiceItemId === item.id),
-  );
-  if (invoiceMatches.length && !availableInvoiceItem) {
-    return { item: row, error: "This Invoice item has already been added to the current Delivery Order." };
-  }
-  if (availableInvoiceItem) {
-    const currentSavedItem = currentOrder?.items.find(
-      (item) => item.invoiceItemId === availableInvoiceItem.id,
+  const availableInvoiceItem = invoiceMatches.find((item) => {
+    const currentSavedQuantity = currentOrder?.status === "Cancelled"
+      ? 0
+      : currentOrder?.items
+        .filter((current) => current.invoiceItemId === item.id)
+        .reduce((sum, current) => sum + Number(current.quantity || 0), 0) || 0;
+    const previouslyDeliveredQuantity = Math.max(
+      0,
+      (item.previouslyDeliveredQuantity || 0) - currentSavedQuantity,
     );
+    const allocatedQuantity = otherItems
+      .filter((current) => current.invoiceItemId === item.id)
+      .reduce((sum, current) => sum + Number(current.quantity || 0), 0);
+    return allocatedQuantity < Math.max(0, item.quantity - previouslyDeliveredQuantity);
+  });
+  if (availableInvoiceItem) {
     const currentCountedQuantity = currentOrder?.status === "Cancelled"
       ? 0
-      : currentSavedItem?.quantity || 0;
+      : currentOrder?.items
+        .filter((item) => item.invoiceItemId === availableInvoiceItem.id)
+        .reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0;
     const previouslyDeliveredQuantity = Math.max(
       0,
       (availableInvoiceItem.previouslyDeliveredQuantity || 0) - currentCountedQuantity,
@@ -855,7 +870,7 @@ function DocumentForm({
     if (!row) return;
     const selected = invoice || !selectedInvoice
       ? { item: itemFromProduct(row, product, value) }
-      : selectDeliveryProduct(row, product, value, selectedInvoice, items);
+      : selectDeliveryProduct(row, product, value, selectedInvoice, items, reference.products);
     setError(selected.error || "");
     setItems((rows) => rows.map((entry) => entry.id === id ? selected.item : entry));
   }
@@ -879,9 +894,21 @@ function DocumentForm({
         return `Item ${index + 1}: Delivery quantity cannot exceed the remaining quantity of ${item.remainingQuantity}.`;
       if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
     }
-    const invoiceItemIds = items.flatMap((item) => item.invoiceItemId ? [item.invoiceItemId] : []);
-    if (new Set(invoiceItemIds).size !== invoiceItemIds.length)
-      return "This Invoice item has already been added to the current Delivery Order.";
+    const invoiceItemProductPairs = items.flatMap((item) => item.invoiceItemId && item.productId ? [`${item.invoiceItemId}:${item.productId}`] : []);
+    if (new Set(invoiceItemProductPairs).size !== invoiceItemProductPairs.length)
+      return "This Child SKU has already been added for the same Invoice item.";
+    const invoiceGroups = new Map<string, { quantity: number; remaining: number }>();
+    items.forEach((item) => {
+      if (!item.invoiceItemId) return;
+      const group = invoiceGroups.get(item.invoiceItemId) || { quantity: 0, remaining: item.remainingQuantity || 0 };
+      group.quantity += Number(item.quantity || 0);
+      group.remaining = item.remainingQuantity || group.remaining;
+      invoiceGroups.set(item.invoiceItemId, group);
+    });
+    for (const group of invoiceGroups.values()) {
+      if (group.quantity > group.remaining)
+        return `Delivery quantity cannot exceed the remaining quantity of ${group.remaining}.`;
+    }
     const extraProductIds = items.flatMap((item) => item.itemSource === "extra" && item.productId ? [item.productId] : []);
     if (new Set(extraProductIds).size !== extraProductIds.length)
       return "This Extra Item has already been added to the current Delivery Order.";
@@ -1692,7 +1719,7 @@ function RecordModal({
     const row = draft.items.find((item) => item.id === id);
     if (!row) return;
     const selected = !invoice && activeModalInvoice
-      ? selectDeliveryProduct(row, product, value, activeModalInvoice, draft.items, savedDelivery)
+      ? selectDeliveryProduct(row, product, value, activeModalInvoice, draft.items, reference.products, savedDelivery)
       : { item: itemFromProduct(row, product, value) };
     if (selected.error) {
       store.notify(selected.error);
@@ -1798,9 +1825,21 @@ function RecordModal({
       if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
     }
     if (!invoice) {
-      const invoiceItemIds = draft.items.flatMap((item) => item.invoiceItemId ? [item.invoiceItemId] : []);
-      if (new Set(invoiceItemIds).size !== invoiceItemIds.length)
-        return "This Invoice item has already been added to the current Delivery Order.";
+      const invoiceItemProductPairs = draft.items.flatMap((item) => item.invoiceItemId && item.productId ? [`${item.invoiceItemId}:${item.productId}`] : []);
+      if (new Set(invoiceItemProductPairs).size !== invoiceItemProductPairs.length)
+        return "This Child SKU has already been added for the same Invoice item.";
+      const invoiceGroups = new Map<string, { quantity: number; remaining: number }>();
+      draft.items.forEach((item) => {
+        if (!item.invoiceItemId) return;
+        const group = invoiceGroups.get(item.invoiceItemId) || { quantity: 0, remaining: item.remainingQuantity || 0 };
+        group.quantity += Number(item.quantity || 0);
+        group.remaining = item.remainingQuantity || group.remaining;
+        invoiceGroups.set(item.invoiceItemId, group);
+      });
+      for (const group of invoiceGroups.values()) {
+        if (group.quantity > group.remaining)
+          return `Delivery quantity cannot exceed the remaining quantity of ${group.remaining}.`;
+      }
       const extraProductIds = draft.items.flatMap((item) => item.itemSource === "extra" && item.productId ? [item.productId] : []);
       if (new Set(extraProductIds).size !== extraProductIds.length)
         return "This Extra Item has already been added to the current Delivery Order.";
