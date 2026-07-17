@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     db
       .from("delivery_orders")
       .select(
-        "id,do_number,delivery_date,customer_id,invoice_id,invoice_number,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,delivery_contact_person,delivery_contact_number,issued_by_user_id,issued_by_display_name,item_collect_method,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,invoice_item_id,item_source,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
+        "id,do_number,delivery_date,customer_id,invoice_id,invoice_number,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,delivery_contact_person,delivery_contact_number,issued_by_user_id,issued_by_display_name,item_collect_method,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,invoice_item_id,item_source,product_id,product_model,sku,product_type,description,brand,quantity,remarks,invoice_item:invoice_items(quantity))",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
@@ -51,6 +51,11 @@ export async function GET(req: NextRequest) {
     rows.map((x) => ({
       id: x.id,
       invoiceItemId: x.invoice_item_id || undefined,
+      invoiceQuantity: deliveryItems && x.invoice_item_id
+        ? Number(x.invoice_item?.quantity || 0)
+        : deliveryItems
+          ? 0
+          : undefined,
       itemSource: deliveryItems
         ? x.item_source || (x.invoice_item_id ? "invoice" : "extra")
         : undefined,
@@ -61,7 +66,7 @@ export async function GET(req: NextRequest) {
       description: x.description,
       brand: x.brand,
       quantity: Number(x.quantity),
-      unitPrice: Number(x.unit_price),
+      unitPrice: deliveryItems ? 0 : Number(x.unit_price),
       unitCost: Number(x.unit_cost || 0),
       discount: Number(x.discount_amount || 0),
       remarks: x.remarks || "",
