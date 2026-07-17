@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import tesvilaLogo from "../Logo original remove background.png";
+import payNowQr from "../PayNow_QR.png";
 import { authFetch, getClientSession } from "@/lib/client-auth";
 import {
   buildInvoiceReportData,
@@ -1401,17 +1402,17 @@ function InvoiceReportPreview({
                   </>
                 ) : (
                   <header className="invoice-continuation-header">
-                    <div><strong>{report.company.name}</strong><span>Invoice No.: {report.invoiceNumber}</span></div>
-                    <div><b>Invoice Continued</b><span>Customer: {report.customer.companyName}</span></div>
+                    <div><strong>{report.company.name}</strong><span>Co./GST Reg.No. {report.company.registrationNumber}</span></div>
+                    <div><b>Invoice No.: {report.invoiceNumber}</b><span>Customer: {report.customer.companyName}</span></div>
                   </header>
                 )}
                 <h3 className="invoice-items-title">{report.sectionTitle}</h3>
                 <table className="invoice-item-report-table">
-                  <thead><tr><th>No.</th><th>SKU / Item Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th></tr></thead>
+                  <thead><tr><th>No.</th><th>Item Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th></tr></thead>
                   <tbody>{rowsForPage(pageItems, pageIndex).map((item, rowIndex) => (
                     <tr key={item?.id || `blank-${rowIndex}`} className={!item ? "invoice-blank-row" : undefined}>
                       <td>{item?.number || ""}</td>
-                      <td>{item && <div className="invoice-description"><b>{item.sku}</b><span>{item.model}</span><span>{item.type}</span><span>{item.description}</span></div>}</td>
+                      <td>{item && <div className="invoice-description"><span>{[item.brand, item.description].filter(Boolean).join(" ")}</span></div>}</td>
                       <td>{item?.quantity ?? ""}</td>
                       <td>{item ? invoiceReportMoney(item.unitPrice) : ""}</td>
                       <td>{item ? invoiceReportMoney(item.amount) : ""}</td>
@@ -1437,11 +1438,11 @@ function InvoiceReportPreview({
                     </div>
                     <div className="invoice-terms-row">
                       <div className="invoice-terms"><b>Terms and Conditions:</b><ol>{report.terms.map((term) => <li key={term}>{term}</li>)}</ol></div>
+                      <div className="invoice-qr"><Image src={payNowQr} alt="PayNow QR" /><b>PayNow</b></div>
                       <div className="invoice-issued-by">Issued By: {report.issuedBy}</div>
                     </div>
                   </footer>
                 )}
-                <div className="invoice-page-number">Page {pageIndex + 1} of {pages.length}</div>
               </article>
             );
           })}
@@ -2223,11 +2224,16 @@ function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
 }
 
 export async function generateInvoicePdf(inv: InvoiceRecord) {
-  const logoResponse = await fetch(tesvilaLogo.src);
+  const [logoResponse, qrResponse] = await Promise.all([
+    fetch(tesvilaLogo.src),
+    fetch(payNowQr.src),
+  ]);
   if (!logoResponse.ok) throw new Error("Tesvila logo could not be loaded");
+  if (!qrResponse.ok) throw new Error("PayNow QR code could not be loaded");
   const bytes = await createInvoicePdf(
     buildInvoiceReportData(inv),
     await logoResponse.arrayBuffer(),
+    await qrResponse.arrayBuffer(),
   );
   const anchor = document.createElement("a");
   anchor.href = URL.createObjectURL(

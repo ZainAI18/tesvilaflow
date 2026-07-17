@@ -15,7 +15,6 @@ const CONTENT_WIDTH = A4_WIDTH - MARGIN * 2;
 const BLUE = rgb(0.02, 0.23, 0.49);
 const BLACK = rgb(0.05, 0.05, 0.05);
 const RED = rgb(0.58, 0.08, 0.1);
-const GRAY = rgb(0.35, 0.35, 0.35);
 const LIGHT_BLUE = rgb(0.94, 0.97, 1);
 const WHITE = rgb(1, 1, 1);
 
@@ -24,6 +23,7 @@ type Kit = {
   regular: PDFFont;
   bold: PDFFont;
   logo: PDFImage;
+  qr: PDFImage;
   pages: PDFPage[];
 };
 
@@ -124,7 +124,7 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
   page.drawText(data.company.name, {
     x: MARGIN,
     y: 806,
-    size: 13,
+    size: 14.5,
     font: bold,
     color: BLUE,
   });
@@ -140,14 +140,14 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
     ],
     MARGIN,
     791,
-    6.8,
-    9,
+    8.1,
+    10,
     BLACK,
   );
   page.drawText(data.title, {
-    x: 446,
-    y: 792,
-    size: 26,
+    x: 438,
+    y: 790,
+    size: 28,
     font: bold,
     color: BLUE,
   });
@@ -167,13 +167,13 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
   const rows = [
     ["Invoice No.", [data.invoiceNumber]],
     ["PO No.", [data.poNumber]],
-    ["DO No.", wrap(regular, 7, data.doNumbers, infoWidth - labelWidth - 10)],
+    ["DO No.", wrap(regular, 8.2, data.doNumbers, infoWidth - labelWidth - 10)],
     ["Issued Date", [data.issuedDate]],
     ["Delivery Date", deliveryLines],
   ] as const;
   let infoCursor = 726;
   rows.forEach(([label, values]) => {
-    const rowHeight = Math.max(16, values.length * 8 + 6);
+    const rowHeight = Math.max(19, values.length * 9.5 + 7);
     page.drawRectangle({
       x: infoX,
       y: infoCursor - rowHeight,
@@ -190,8 +190,8 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
     });
     page.drawText(label, {
       x: infoX + 5,
-      y: infoCursor - 11,
-      size: 6.7,
+      y: infoCursor - 13,
+      size: 8,
       font: bold,
       color: BLACK,
     });
@@ -200,50 +200,42 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
       label === "Invoice No." ? bold : regular,
       [...values],
       infoX + labelWidth + 5,
-      infoCursor - 11,
-      7,
-      8,
+      infoCursor - 13,
+      8.2,
+      9.5,
       BLACK,
     );
     infoCursor -= rowHeight;
   });
 
-  drawImageFit(page, kit.logo, 348, 632, 190, 88);
+  drawImageFit(page, kit.logo, 310, 610, 250, 115);
 
   const customerTop = infoCursor - 24;
   page.drawText("Invoice To:", {
     x: MARGIN + 7,
     y: customerTop,
-    size: 8,
+    size: 9.5,
     font: bold,
     color: BLUE,
   });
   const customerLines = [
-    ...wrap(bold, 9, data.customer.companyName, 260),
-    ...wrap(regular, 7.2, data.customer.address, 260),
+    ...wrap(bold, 10.5, data.customer.companyName, 260),
+    ...wrap(regular, 8.5, data.customer.address, 260),
     `Contact Name: ${data.customer.contactName}`,
     `Contact Number: ${data.customer.contactNumber}`,
   ];
   customerLines.forEach((line, index) =>
     page.drawText(line, {
       x: MARGIN + 7,
-      y: customerTop - 16 - index * 10,
-      size: index === 0 ? 9 : 7.2,
+      y: customerTop - 17 - index * 11,
+      size: index === 0 ? 10.5 : 8.5,
       font: index === 0 ? bold : regular,
       color: BLACK,
     }),
   );
 
-  const customerBottom = customerTop - 16 - customerLines.length * 10;
-  const titleY = Math.min(562, customerBottom - 16);
-  page.drawText(data.sectionTitle, {
-    x: 235,
-    y: titleY,
-    size: 9,
-    font: bold,
-    color: BLUE,
-  });
-  return titleY - 14;
+  const customerBottom = customerTop - 17 - customerLines.length * 11;
+  return Math.min(555, customerBottom - 12);
 }
 
 
@@ -251,28 +243,28 @@ function drawContinuationHeader(kit: Kit, page: PDFPage, data: InvoiceReportData
   page.drawText(data.company.name, {
     x: MARGIN,
     y: 808,
-    size: 11,
-    font: kit.bold,
-    color: BLUE,
-  });
-  page.drawText("Invoice Continued", {
-    x: 424,
-    y: 808,
-    size: 12,
+    size: 12.5,
     font: kit.bold,
     color: BLUE,
   });
   page.drawText(`Invoice No.: ${data.invoiceNumber}`, {
+    x: 398,
+    y: 808,
+    size: 10,
+    font: kit.bold,
+    color: BLUE,
+  });
+  page.drawText(`Co./GST Reg.No. ${data.company.registrationNumber}`, {
     x: MARGIN,
     y: 791,
-    size: 7.5,
-    font: kit.bold,
+    size: 8.5,
+    font: kit.regular,
     color: BLACK,
   });
   page.drawText(`Customer: ${data.customer.companyName}`, {
     x: 250,
     y: 791,
-    size: 7.5,
+    size: 8.5,
     font: kit.regular,
     color: BLACK,
   });
@@ -285,6 +277,33 @@ function drawContinuationHeader(kit: Kit, page: PDFPage, data: InvoiceReportData
   return 766;
 }
 
+function drawSectionTitle(
+  kit: Kit,
+  page: PDFPage,
+  data: InvoiceReportData,
+  topY: number,
+) {
+  const height = 24;
+  page.drawRectangle({
+    x: MARGIN,
+    y: topY - height,
+    width: CONTENT_WIDTH,
+    height,
+    borderColor: BLACK,
+    borderWidth: 0.65,
+  });
+  const size = 10.5;
+  const textWidth = kit.bold.widthOfTextAtSize(data.sectionTitle, size);
+  page.drawText(data.sectionTitle, {
+    x: MARGIN + (CONTENT_WIDTH - textWidth) / 2,
+    y: topY - 16,
+    size,
+    font: kit.bold,
+    color: BLUE,
+  });
+  return topY - height;
+}
+
 const columns = {
   number: { x: MARGIN, width: 28 },
   description: { x: MARGIN + 28, width: 309 },
@@ -294,7 +313,7 @@ const columns = {
 };
 
 function drawTableHeader(kit: Kit, page: PDFPage, topY: number) {
-  const height = 20;
+  const height = 24;
   page.drawRectangle({
     x: MARGIN,
     y: topY - height,
@@ -306,7 +325,7 @@ function drawTableHeader(kit: Kit, page: PDFPage, topY: number) {
   });
   const headers = [
     ["No.", columns.number],
-    ["SKU / Item Description", columns.description],
+    ["Item Description", columns.description],
     ["Quantity", columns.quantity],
     ["Unit Price", columns.unitPrice],
     ["Amount", columns.amount],
@@ -322,8 +341,8 @@ function drawTableHeader(kit: Kit, page: PDFPage, topY: number) {
     }
     page.drawText(label, {
       x: column.x + 4,
-      y: topY - 13,
-      size: 6.6,
+      y: topY - 16,
+      size: 8,
       font: kit.bold,
       color: WHITE,
     });
@@ -332,17 +351,13 @@ function drawTableHeader(kit: Kit, page: PDFPage, topY: number) {
 }
 
 function itemDescriptionLines(kit: Kit, item: InvoiceReportItem) {
-  return [
-    ...wrap(kit.bold, 6.4, item.sku, columns.description.width - 10),
-    ...wrap(kit.regular, 6.1, item.model, columns.description.width - 10),
-    ...wrap(kit.regular, 6.1, item.type, columns.description.width - 10),
-    ...wrap(kit.regular, 6.1, item.description, columns.description.width - 10),
-  ].filter((line, index, lines) => line || index === 0 || lines.length === 1);
+  const description = [item.brand, item.description].filter(Boolean).join(" ");
+  return wrap(kit.regular, 7.6, description, columns.description.width - 10);
 }
 
 function itemRowHeight(kit: Kit, item?: InvoiceReportItem) {
   if (!item) return 23;
-  return Math.max(25, itemDescriptionLines(kit, item).length * 6.5 + 6);
+  return Math.max(22, itemDescriptionLines(kit, item).length * 8.4 + 7);
 }
 
 function drawItemRow(
@@ -371,8 +386,8 @@ function drawItemRow(
   if (!item) return topY - height;
   page.drawText(String(item.number), {
     x: columns.number.x + 10,
-    y: topY - 14,
-    size: 7,
+    y: topY - 15,
+    size: 8.5,
     font: kit.regular,
     color: BLACK,
   });
@@ -380,67 +395,134 @@ function drawItemRow(
   descriptionLines.forEach((line, index) =>
     page.drawText(line, {
       x: columns.description.x + 5,
-      y: topY - 9 - index * 6.5,
-      size: index === 0 ? 6.4 : 6.1,
-      font: index === 0 ? kit.bold : kit.regular,
+      y: topY - 12 - index * 8.4,
+      size: 7.6,
+      font: kit.regular,
       color: BLACK,
     }),
   );
   page.drawText(String(item.quantity), {
     x: columns.quantity.x + 19,
-    y: topY - 14,
-    size: 7,
+    y: topY - 15,
+    size: 8.5,
     font: kit.regular,
     color: BLACK,
   });
   page.drawText(money(item.unitPrice), {
     x: columns.unitPrice.x + 5,
-    y: topY - 14,
-    size: 6.5,
+    y: topY - 15,
+    size: 8,
     font: kit.regular,
     color: BLACK,
   });
   page.drawText(money(item.amount), {
     x: columns.amount.x + 5,
-    y: topY - 14,
-    size: 6.5,
+    y: topY - 15,
+    size: 8,
     font: kit.bold,
     color: BLACK,
   });
   return topY - height;
 }
 
+const LOWER_FOOTER_TOP = 145;
+const SUMMARY_BOX_HEIGHT = 58;
+
+function footerUpperHeight(kit: Kit, data: InvoiceReportData) {
+  const noticeLines = wrap(kit.regular, 7.6, data.notice, CONTENT_WIDTH);
+  const remarkLines = wrap(kit.regular, 7.7, data.remarks, CONTENT_WIDTH);
+  return (
+    11 +
+    noticeLines.length * 8.8 +
+    5 +
+    12 +
+    Math.max(3, remarkLines.length) * 9 +
+    5 +
+    SUMMARY_BOX_HEIGHT +
+    8
+  );
+}
+
 function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: number) {
   const { bold, regular } = kit;
-  let cursor = topY - 10;
-  page.drawText("NOTICE", { x: MARGIN, y: cursor, size: 6.8, font: bold, color: RED });
-  cursor -= 10;
-  const noticeLines = wrap(regular, 6.2, data.notice, CONTENT_WIDTH);
-  drawTextLines(page, regular, noticeLines, MARGIN, cursor, 6.2, 7.2, RED);
-  cursor -= noticeLines.length * 7.2 + 6;
+  let cursor = topY - 8;
+  page.drawText("NOTICE", {
+    x: MARGIN,
+    y: cursor,
+    size: 8.3,
+    font: bold,
+    color: RED,
+  });
+  cursor -= 11;
+  const noticeLines = wrap(regular, 7.6, data.notice, CONTENT_WIDTH);
+  drawTextLines(page, regular, noticeLines, MARGIN, cursor, 7.6, 8.8, RED);
+  cursor -= noticeLines.length * 8.8 + 5;
 
-  page.drawText("Remarks:", { x: MARGIN, y: cursor, size: 6.8, font: bold, color: BLACK });
-  const remarkLines = wrap(regular, 6.4, data.remarks, 310).slice(0, 4);
-  if (remarkLines.length) drawTextLines(page, regular, remarkLines, MARGIN + 48, cursor, 6.4, 7.3, BLACK);
-  cursor -= Math.max(16, remarkLines.length * 7.3 + 5);
+  page.drawText("Remarks:", {
+    x: MARGIN,
+    y: cursor,
+    size: 8.3,
+    font: bold,
+    color: BLACK,
+  });
+  cursor -= 12;
+  const remarkLines = wrap(regular, 7.7, data.remarks, CONTENT_WIDTH);
+  if (remarkLines.length) {
+    drawTextLines(page, regular, remarkLines, MARGIN, cursor, 7.7, 9, BLACK);
+  }
+  cursor -= Math.max(3, remarkLines.length) * 9 + 5;
 
   const boxTop = cursor;
-  const boxHeight = 72;
+  const boxHeight = SUMMARY_BOX_HEIGHT;
   page.drawRectangle({
     x: MARGIN,
     y: boxTop - boxHeight,
     width: 300,
     height: boxHeight,
     borderColor: BLACK,
-    borderWidth: 0.6,
+    borderWidth: 0.65,
     color: LIGHT_BLUE,
   });
-  page.drawText("ITEM COLLECT METHOD", { x: MARGIN + 8, y: boxTop - 14, size: 6, font: bold, color: BLUE });
-  page.drawText(data.itemCollectMethod, { x: MARGIN + 8, y: boxTop - 29, size: 8, font: bold, color: BLACK });
-  page.drawLine({ start: { x: MARGIN + 8, y: boxTop - 36 }, end: { x: MARGIN + 139, y: boxTop - 36 }, thickness: 0.5, color: BLACK });
-  page.drawText("PAYMENT METHOD", { x: MARGIN + 158, y: boxTop - 14, size: 6, font: bold, color: BLUE });
-  page.drawText(data.paymentMethod, { x: MARGIN + 158, y: boxTop - 29, size: 8, font: bold, color: BLACK });
-  page.drawLine({ start: { x: MARGIN + 158, y: boxTop - 36 }, end: { x: MARGIN + 290, y: boxTop - 36 }, thickness: 0.5, color: BLACK });
+  page.drawText("ITEM COLLECT METHOD", {
+    x: MARGIN + 8,
+    y: boxTop - 14,
+    size: 7.5,
+    font: bold,
+    color: BLUE,
+  });
+  page.drawText(data.itemCollectMethod, {
+    x: MARGIN + 8,
+    y: boxTop - 31,
+    size: 9.5,
+    font: bold,
+    color: BLACK,
+  });
+  page.drawLine({
+    start: { x: MARGIN + 8, y: boxTop - 39 },
+    end: { x: MARGIN + 139, y: boxTop - 39 },
+    thickness: 0.55,
+    color: BLACK,
+  });
+  page.drawText("PAYMENT METHOD", {
+    x: MARGIN + 158,
+    y: boxTop - 14,
+    size: 7.5,
+    font: bold,
+    color: BLUE,
+  });
+  page.drawText(data.paymentMethod, {
+    x: MARGIN + 158,
+    y: boxTop - 31,
+    size: 9.5,
+    font: bold,
+    color: BLACK,
+  });
+  page.drawLine({
+    start: { x: MARGIN + 158, y: boxTop - 39 },
+    end: { x: MARGIN + 290, y: boxTop - 39 },
+    thickness: 0.55,
+    color: BLACK,
+  });
 
   const totalsX = 350;
   const totalsWidth = A4_WIDTH - MARGIN - totalsX;
@@ -460,74 +542,104 @@ function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: numb
     ["Balance", data.totals.balance],
   ] as const;
   totals.forEach(([label, value], index) => {
-    const y = boxTop - 12 - index * 13;
-    page.drawText(label, { x: totalsX + 7, y, size: 6.7, font: index >= 2 ? bold : regular, color: BLACK });
-    page.drawText(money(value), { x: totalsX + 95, y, size: 6.7, font: index >= 2 ? bold : regular, color: index === 4 ? BLUE : BLACK });
-    if (index < totals.length - 1) page.drawLine({ start: { x: totalsX, y: y - 4 }, end: { x: totalsX + totalsWidth, y: y - 4 }, thickness: 0.3, color: BLACK });
+    const rowTop = boxTop - index * (boxHeight / totals.length);
+    const y = rowTop - 9.5;
+    page.drawText(label, {
+      x: totalsX + 7,
+      y,
+      size: 8,
+      font: index >= 2 ? bold : regular,
+      color: BLACK,
+    });
+    page.drawText(money(value), {
+      x: totalsX + 92,
+      y,
+      size: 8,
+      font: index >= 2 ? bold : regular,
+      color: index === 4 ? BLUE : BLACK,
+    });
+    if (index < totals.length - 1) {
+      page.drawLine({
+        start: { x: totalsX, y: rowTop - boxHeight / totals.length },
+        end: { x: totalsX + totalsWidth, y: rowTop - boxHeight / totals.length },
+        thickness: 0.35,
+        color: BLACK,
+      });
+    }
   });
-  cursor = boxTop - boxHeight - 9;
 
-  page.drawText("Terms and Conditions:", { x: MARGIN, y: cursor, size: 6.7, font: bold, color: BLUE });
-  let termsY = cursor - 9;
+  page.drawText("Terms and Conditions:", {
+    x: MARGIN,
+    y: LOWER_FOOTER_TOP,
+    size: 8.2,
+    font: bold,
+    color: BLUE,
+  });
+  let termsY = LOWER_FOOTER_TOP - 10;
   data.terms.forEach((term, index) => {
-    const lines = wrap(regular, 5.4, `${index + 1}. ${term}`, 360);
-    drawTextLines(page, regular, lines, MARGIN, termsY, 5.4, 6.25, BLACK);
-    termsY -= lines.length * 6.25;
+    const lines = wrap(regular, 6.7, `${index + 1}. ${term}`, 365);
+    drawTextLines(page, regular, lines, MARGIN, termsY, 6.7, 7.2, BLACK);
+    termsY -= lines.length * 7.2;
+  });
+
+  const qrSize = 80;
+  drawImageFit(page, kit.qr, 409, 55, qrSize, qrSize);
+  page.drawText("PayNow", {
+    x: 428,
+    y: 44,
+    size: 7.5,
+    font: bold,
+    color: BLUE,
   });
   page.drawText(`Issued By: ${data.issuedBy}`, {
-    x: 414,
-    y: Math.max(52, cursor - 62),
-    size: 10,
+    x: 425,
+    y: 22,
+    size: 11.5,
     font: bold,
     color: BLACK,
   });
 }
 
+
 export async function createInvoicePdf(
   data: InvoiceReportData,
   logoBytes: ArrayBuffer | Uint8Array,
+  qrBytes: ArrayBuffer | Uint8Array,
 ) {
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const logo = await doc.embedPng(logoBytes);
-  const kit: Kit = { doc, regular, bold, logo, pages: [] };
+  const qr = await doc.embedPng(qrBytes);
+  const kit: Kit = { doc, regular, bold, logo, qr, pages: [] };
 
   let page = addPage(kit);
-  let y = drawTableHeader(kit, page, drawMainHeader(kit, page, data));
+  let y = drawTableHeader(
+    kit,
+    page,
+    drawSectionTitle(kit, page, data, drawMainHeader(kit, page, data)),
+  );
   const rows: Array<InvoiceReportItem | undefined> = [...data.items];
   while (rows.length < 3) rows.push(undefined);
 
   rows.forEach((item, index) => {
     const forceContinuation = data.items.length > 8 && index === 8;
     const height = itemRowHeight(kit, item);
-    const isLast = index === rows.length - 1;
-    const finalFooterLimit = 230;
-    if (
-      forceContinuation ||
-      y - height < 42 ||
-      (isLast && y - height < finalFooterLimit)
-    ) {
+    if (forceContinuation || y - height < 42) {
       page = addPage(kit);
-      y = drawTableHeader(kit, page, drawContinuationHeader(kit, page, data));
+      y = drawTableHeader(
+        kit,
+        page,
+        drawSectionTitle(kit, page, data, drawContinuationHeader(kit, page, data)),
+      );
     }
     y = drawItemRow(kit, page, y, item);
   });
 
-  if (y < 230) {
+  if (y - footerUpperHeight(kit, data) < LOWER_FOOTER_TOP + 5) {
     page = addPage(kit);
-    y = drawContinuationHeader(kit, page, data) - 8;
+    y = drawContinuationHeader(kit, page, data) - 12;
   }
   drawFooter(kit, page, data, y);
-
-  kit.pages.forEach((pdfPage, index) => {
-    pdfPage.drawText(`Page ${index + 1} of ${kit.pages.length}`, {
-      x: 500,
-      y: 16,
-      size: 6.5,
-      font: regular,
-      color: GRAY,
-    });
-  });
   return doc.save();
 }
