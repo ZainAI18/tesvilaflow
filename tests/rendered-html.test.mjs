@@ -94,7 +94,7 @@ test("invoice and delivery-order method dropdowns persist through constrained da
   assert.match(workflow, /itemCollectLabel\(order\.itemCollectMethod\)/);
   assert.match(report, /invoice\.paymentMethod === "paynow"/);
   assert.match(report, /invoice\.paymentMethod === "terms"/);
-  assert.match(documentsApi, /create_invoice_with_do_v8/);
+  assert.match(documentsApi, /create_invoice_with_do_v9/);
   assert.match(documentsApi, /update_delivery_order_document_v8/);
   assert.match(migration, /item_collect_method in \('delivery','self_collect'\)/);
   assert.match(migration, /payment_method in \('paynow','cash','terms'\)/);
@@ -110,8 +110,8 @@ test("item descriptions are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "description", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "description", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /readOnly value=\{row\.description\}/);
-  assert.match(documentsApi, /create_invoice_with_do_v8/);
-  assert.match(documentsApi, /update_invoice_document_v7/);
+  assert.match(documentsApi, /create_invoice_with_do_v9/);
+  assert.match(documentsApi, /update_invoice_document_v8/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
   assert.match(migration, /with ordinality as payload_item/);
@@ -126,7 +126,7 @@ test("item brands are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "brand", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "brand", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /updated\(row\.id, "brand"/);
-  assert.match(documentsApi, /create_invoice_with_do_v8/);
+  assert.match(documentsApi, /create_invoice_with_do_v9/);
   assert.match(documentsApi, /update_delivery_order_document_v8/);
   assert.match(migration, /set brand = coalesce\(payload_item\.value->>'brand', ''\)/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
@@ -181,7 +181,7 @@ test("Invoice Only saves transactionally without creating a Delivery Order or st
   assert.match(workflow, /saving === "invoice-only"/);
   assert.match(workflow, /\(!invoice \|\| !!inv\.doId\)/);
   assert.match(documentsApi, /"invoice_only"/);
-  assert.match(documentsApi, /create_invoice_only_v7/);
+  assert.match(documentsApi, /create_invoice_only_v8/);
   assert.match(migration, /delivery_orders_one_active_invoice_unique/);
   assert.match(migration, /This Invoice already has a linked Delivery Order\./);
   assert.match(invoiceOnlyFunction, /insert into public\.invoices/);
@@ -323,7 +323,7 @@ test("Delivery Order contacts remain separate from Invoice and customer contacts
   assert.match(css, /\.document-delivery-contact-row/);
   assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(documentsApi, /delivery_contact_person,delivery_contact_number/);
-  assert.match(documentsApi, /create_invoice_with_do_v8/);
+  assert.match(documentsApi, /create_invoice_with_do_v9/);
   assert.match(documentsApi, /create_delivery_order_only_v8/);
   assert.match(documentsApi, /update_delivery_order_document_v8/);
   assert.match(migration, /add column if not exists delivery_contact_person text/);
@@ -358,4 +358,34 @@ test("Delivery Order terms and signatures stay in a static final-page footer", a
   assert.match(workflow, /Customer Signature/);
   assert.match(workflow, /CUSTOMER STAMP/);
   assert.match(workflow, /Received Date:/);
+});
+
+test("Delivery Order PDF uses the Invoice blue theme and Invoice title is editable and persisted", async () => {
+  const [workflow, report, documentsApi, migration, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("lib/invoice-report.ts"),
+    read("app/api/documents/route.ts"),
+    read("supabase/migrations/202607170002_invoice_title.sql"),
+    read("lib/supabase-server.ts"),
+  ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(workflow, /TESVILA_BLUE = rgb\(0\.02, 0\.23, 0\.49\)/);
+  assert.doesNotMatch(workflow, /page\.drawRectangle\(\{ x: 0, y: 790/);
+  assert.match(workflow, /Email: sales@tesvila\.com\.sg/);
+  assert.match(workflow, /Web: www\.tesvila\.com\.sg/);
+  assert.match(workflow, /start: \{ x: 36, y: 785 \}[\s\S]*color: TESVILA_BLUE/);
+  assert.match(workflow, /function doTableHead[\s\S]*color: TESVILA_BLUE/);
+  assert.match(workflow, /useState\("Supply Sanitary Ware"\)/);
+  assert.match(workflow, /<label>Title of Invoice<\/label>/);
+  assert.match(workflow, /titleOfInvoice: titleOfInvoice\.trim\(\) \|\| "Supply Sanitary Ware"/);
+  assert.match(report, /sectionTitle: safeText\(invoice\.titleOfInvoice, "Supply Sanitary Ware"\)/);
+  assert.match(documentsApi, /invoice_title/);
+  assert.match(documentsApi, /create_invoice_with_do_v9/);
+  assert.match(documentsApi, /create_invoice_only_v8/);
+  assert.match(documentsApi, /update_invoice_document_v8/);
+  assert.match(migration, /add column if not exists invoice_title text/);
+  assert.match(migration, /create_invoice_with_do_v8\(p_payload\)/);
+  assert.match(migration, /create_invoice_only_v7\(p_payload\)/);
+  assert.match(migration, /update_invoice_document_v7\(p_id, p_payload\)/);
 });
