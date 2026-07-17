@@ -597,6 +597,8 @@ function DocumentForm({
     [customerName, setCustomerName] = useState(""),
     [billingAddress, setBillingAddress] = useState(""),
     [deliveryAddress, setDeliveryAddress] = useState(""),
+    [deliveryContact, setDeliveryContact] = useState(""),
+    [deliveryPhone, setDeliveryPhone] = useState(""),
     [attention, setAttention] = useState(""),
     [phone, setPhone] = useState(""),
     [po, setPO] = useState(""),
@@ -633,6 +635,8 @@ function DocumentForm({
     setPhone(selected.customer.phone);
     setBillingAddress(selected.customer.billingAddress);
     setDeliveryAddress(selected.customer.deliveryAddress);
+    setDeliveryContact("");
+    setDeliveryPhone("");
     setItemCollectMethod(selected.itemCollectMethod || "");
     setItems(invoiceItemsForDeliveryOrder(selected));
   }
@@ -643,6 +647,8 @@ function DocumentForm({
     setPhone("");
     setBillingAddress("");
     setDeliveryAddress("");
+    setDeliveryContact("");
+    setDeliveryPhone("");
     setItemCollectMethod("");
     setItems([]);
   }
@@ -698,12 +704,16 @@ function DocumentForm({
       setPhone(match.contact_number || "");
       setBillingAddress(match.billing_address || "");
       setDeliveryAddress(match.delivery_address || "");
+      setDeliveryContact("");
+      setDeliveryPhone("");
     } else if (customerId) {
       setCustomerId("");
       setAttention("");
       setPhone("");
       setBillingAddress("");
       setDeliveryAddress("");
+      setDeliveryContact("");
+      setDeliveryPhone("");
     }
   }
   function chooseProduct(id: string, value: string) {
@@ -748,8 +758,8 @@ function DocumentForm({
         remarks,
         deliveryDate: new Date().toISOString().slice(0, 10),
         deliveryAddress,
-        deliveryContact: attention,
-        deliveryPhone: phone,
+        deliveryContact,
+        deliveryPhone,
         itemCollectMethod,
         status: "Scheduled",
       };
@@ -874,6 +884,10 @@ function DocumentForm({
           <div className={`document-address-grid ${invoice ? "stacked" : ""}`}>
             <div className="field"><label>Billing Address *</label><textarea className="input address-input" value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} /></div>
             <div className="field"><label>Delivery Address</label><textarea className="input address-input" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} /></div>
+          </div>
+          <div className="document-delivery-contact-row">
+            <div className="field"><label>Delivery Contact Person</label><input className="input" value={deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} /></div>
+            <div className="field"><label>Delivery Contact Number</label><input className="input" value={deliveryPhone} onChange={(e) => setDeliveryPhone(e.target.value)} /></div>
           </div>
           {invoice && <div className="grid-2 document-meta-row">
             <div className="field"><label>PO number</label><input className="input" value={po} onChange={(e) => setPO(e.target.value)} /></div>
@@ -1506,7 +1520,7 @@ function RecordModal({
       customer: match
         ? { customerId: match.id, name: match.company_name, attention: match.contact_person || "", phone: match.contact_number || "", billingAddress: match.billing_address || "", deliveryAddress: match.delivery_address || "" }
         : { ...current.customer, customerId: undefined, name: value },
-      ...(!invoice && match ? { deliveryAddress: match.delivery_address || "", deliveryContact: match.contact_person || "", deliveryPhone: match.contact_number || "" } : {}),
+      ...(!invoice && match ? { deliveryAddress: match.delivery_address || "", deliveryContact: "", deliveryPhone: "" } : {}),
     }) as InvoiceRecord | DORecord);
   };
   const setItem = (id: string, field: keyof DocumentItem, value: unknown) =>
@@ -1585,8 +1599,8 @@ function RecordModal({
       invoiceNumber: selected.invoiceNumber,
       customer: { ...selected.customer },
       deliveryAddress: selected.customer.deliveryAddress,
-      deliveryContact: selected.customer.attention,
-      deliveryPhone: selected.customer.phone,
+      deliveryContact: "",
+      deliveryPhone: "",
       itemCollectMethod: selected.itemCollectMethod || "",
       items: invoiceItemsForDeliveryOrder(selected),
     }) as DORecord);
@@ -1717,6 +1731,26 @@ function RecordModal({
                 if (!invoice) setField("deliveryAddress", e.target.value);
               }} />
             </div>
+            {!invoice && <>
+              <div className="field">
+                <label>Delivery Contact Person</label>
+                <input
+                  className="input"
+                  disabled={readOnly}
+                  value={readOnly ? delivery.deliveryContact || draft.customer.attention || "" : delivery.deliveryContact}
+                  onChange={(e) => setField("deliveryContact", e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Delivery Contact Number</label>
+                <input
+                  className="input"
+                  disabled={readOnly}
+                  value={readOnly ? delivery.deliveryPhone || draft.customer.phone || "" : delivery.deliveryPhone}
+                  onChange={(e) => setField("deliveryPhone", e.target.value)}
+                />
+              </div>
+            </>}
             <div className="field">
               <label>{invoice ? "Invoice date" : "Delivery date"}</label>
               <input
@@ -2263,40 +2297,28 @@ export async function generateDOPdf(order: DORecord) {
   const doBillingLines = wrap(regular, 8, order.customer.billingAddress, 245);
   drawLines(page, regular, 8, doBillingLines, 36, doCustomerY, 10);
   doCustomerY -= doBillingLines.length * 10 + 12;
-  page.drawText(`Attn: ${order.customer.attention || "—"}  |  ${order.customer.phone || "—"}`, { x: 36, y: doCustomerY, size: 8, font: regular, color: MUTED });
-  [
-    ["Invoice No.", order.invoiceNumber || "—"],
-    ["DO No.", order.doNumber],
-    ["Delivery Date", date(order.deliveryDate)],
-  ].forEach(([a, b], i) => {
-    page.drawText(a, {
-      x: 370,
-      y: 720 - i * 18,
-      size: 7,
-      font: bold,
-      color: MUTED,
-    });
-    page.drawText(b, {
-      x: 450,
-      y: 720 - i * 18,
-      size: 8,
-      font: i === 1 ? bold : regular,
-    });
+  const reportDeliveryContact = order.deliveryContact || order.customer.attention || "—";
+  const reportDeliveryPhone = order.deliveryPhone || order.customer.phone || "—";
+  page.drawText(`Attn: ${order.customer.attention || "—"}`, { x: 36, y: doCustomerY, size: 8, font: regular, color: MUTED });
+  page.drawText(`HP No.: ${order.customer.phone || "—"}`, { x: 36, y: doCustomerY - 12, size: 8, font: regular, color: MUTED });
+  page.drawText(`Invoice No.: ${order.invoiceNumber || "—"}`, { x: 36, y: doCustomerY - 24, size: 8, font: regular, color: MUTED });
+
+  const deliveryInformation = [
+    ["DO No.", [order.doNumber]],
+    ["Delivery Address", wrap(regular, 8, order.deliveryAddress || order.customer.deliveryAddress || "—", 125)],
+    ["Contact Person", wrap(regular, 8, reportDeliveryContact, 125)],
+    ["Contact Number", wrap(regular, 8, reportDeliveryPhone, 125)],
+    ["DO Date", [date(order.deliveryDate)]],
+  ] as const;
+  let deliveryInformationY = 720;
+  deliveryInformation.forEach(([label, values]) => {
+    page.drawText(label, { x: 350, y: deliveryInformationY, size: 7, font: bold, color: MUTED });
+    drawLines(page, regular, 8, [...values], 430, deliveryInformationY, 10, INK);
+    deliveryInformationY -= Math.max(18, values.length * 10 + 6);
   });
-  let doDetailY = Math.min(638, doCustomerY - 22);
-  page.drawText("DELIVERY ADDRESS", {
-    x: 36,
-    y: doDetailY,
-    size: 7,
-    font: bold,
-    color: MUTED,
-  });
-  doDetailY -= 15;
-  const doDeliveryLines = wrap(regular, 8, order.customer.deliveryAddress || order.deliveryAddress, 500);
-  drawLines(page, regular, 8, doDeliveryLines, 36, doDetailY, 10);
-  doDetailY -= doDeliveryLines.length * 10 + 12;
-  page.drawText(`Contact: ${order.deliveryContact || "—"}  |  ${order.deliveryPhone || "—"}`, { x: 36, y: doDetailY, size: 8, font: regular, color: MUTED });
-  let y = doTableHead(kit, page, doDetailY - 22);
+
+  const detailBottom = Math.min(doCustomerY - 24, deliveryInformationY);
+  let y = doTableHead(kit, page, Math.min(638, detailBottom - 18));
   const reserve = 245;
   for (const item of order.items) {
     const details = wrap(
