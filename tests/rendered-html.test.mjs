@@ -278,8 +278,10 @@ test("Invoice View and PDF share the redesigned A4 report data and repository as
   assert.match(workflow, /buildInvoiceReportData\(invoice\)/);
   assert.match(workflow, /createInvoicePdf\(/);
   assert.match(workflow, /tesvilaLogo from "\.\.\/Logo original remove background\.png"/);
+  assert.match(workflow, /payNowQr from "\.\.\/PayNow_QR\.png"/);
   assert.match(workflow, /className="invoice-report-logo"/);
-  assert.doesNotMatch(workflow, /className="invoice-qr"/);
+  assert.match(workflow, /className="invoice-qr"/);
+  assert.match(workflow, /\[item\.brand, item\.description\]\.filter\(Boolean\)\.join\(" "\)/);
   assert.match(report, /BLOCK 4001 ANG MO KIO INDUSTRIAL PARK1/);
   assert.match(report, /Please note that the pricing provided in this invoice is a special price/);
   assert.match(report, /Bank transfer to: OCBC Bank 526 228 440 001/);
@@ -287,7 +289,10 @@ test("Invoice View and PDF share the redesigned A4 report data and repository as
   assert.match(report, /Math\.max\(3, items\.length\)/);
   assert.match(report, /const firstPageSize = 8/);
   assert.match(pdf, /forceContinuation = data\.items\.length > 8 && index === 8/);
-  assert.match(pdf, /Page \$\{index \+ 1\} of \$\{kit\.pages\.length\}/);
+  assert.match(pdf, /\[item\.brand, item\.description\]\.filter\(Boolean\)\.join\(" "\)/);
+  assert.doesNotMatch(pdf, /Invoice Continued|Page \$\{index/);
+  assert.match(pdf, /function drawSectionTitle/);
+  assert.match(pdf, /Math\.max\(3, remarkLines\.length\)/);
   assert.match(documentsApi, /subtotal,gst_amount,grand_total,deposit,balance/);
   assert.match(css, /@page \{ size: A4 portrait; margin: 0; \}/);
   assert.match(css, /page-break-inside: avoid/);

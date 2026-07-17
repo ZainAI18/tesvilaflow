@@ -40,6 +40,7 @@ export type InvoiceReportSource = {
     sku?: string;
     model?: string;
     type?: string;
+    brand?: string;
     description?: string;
     quantity: number;
     unitPrice: number;
@@ -68,6 +69,7 @@ export type InvoiceReportItem = {
   sku: string;
   model: string;
   type: string;
+  brand: string;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -113,6 +115,7 @@ export function buildInvoiceReportData(invoice: InvoiceReportSource) {
     sku: safeText(item.sku, "-"),
     model: safeText(item.model),
     type: safeText(item.type),
+    brand: safeText(item.brand),
     description: safeText(item.description),
     quantity: safeNumber(item.quantity, 0),
     unitPrice: safeNumber(item.unitPrice, 0),
