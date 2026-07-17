@@ -17,6 +17,7 @@ type Product = {
   current_stock: number;
   reserved_stock: number;
   minimum_stock: number;
+  parent_product_id: string | null;
 };
 
 type ProductForm = {
@@ -29,6 +30,7 @@ type ProductForm = {
   sellingPrice: string;
   openingStock: string;
   minimumStock: string;
+  parentProductId: string;
 };
 
 const emptyForm: ProductForm = {
@@ -41,6 +43,7 @@ const emptyForm: ProductForm = {
   sellingPrice: "0",
   openingStock: "0",
   minimumStock: "0",
+  parentProductId: "",
 };
 
 const money = (value: number) =>
@@ -138,6 +141,23 @@ export function ProductManager({
     }
   }
 
+  async function updateParentSku(productId: string, parentProductId: string) {
+    try {
+      const response = await authFetch("/api/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, parentProductId: parentProductId || null }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to update Parent SKU");
+      setProducts((current) => current.map((product) => product.id === productId ? result.product : product));
+      notify("Parent SKU updated successfully");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Unable to update Parent SKU");
+      await loadProducts();
+    }
+  }
+
   const filteredProducts = products.filter((product) =>
     (
       product.product_model +
@@ -183,6 +203,7 @@ export function ProductManager({
               <tr>
                 <th>Model / SKU</th>
                 <th>Product Type</th>
+                <th>Parent SKU</th>
                 <th>Brand</th>
                 <th>Description</th>
                 <th>Cost</th>
@@ -195,7 +216,7 @@ export function ProductManager({
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8}>Loading products...</td>
+                  <td colSpan={9}>Loading products...</td>
                 </tr>
               ) : (
                 filteredProducts.map((product) => (
@@ -205,6 +226,21 @@ export function ProductManager({
                       <div className="muted">{product.sku}</div>
                     </td>
                     <td>{product.product_type}</td>
+                    <td>
+                      <select
+                        className="input"
+                        aria-label={`Parent SKU for ${product.sku}`}
+                        value={product.parent_product_id || ""}
+                        onChange={(event) => void updateParentSku(product.id, event.target.value)}
+                      >
+                        <option value="">No Parent SKU</option>
+                        {products
+                          .filter((candidate) => candidate.id !== product.id)
+                          .map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>{candidate.sku}</option>
+                          ))}
+                      </select>
+                    </td>
                     <td>{product.brand}</td>
                     <td>{product.description}</td>
                     <td>{money(Number(product.cost_price))}</td>
@@ -269,6 +305,20 @@ export function ProductManager({
                     updateForm("productType", value)
                   }
                 />
+
+                <div className="field">
+                  <label>Parent SKU (optional)</label>
+                  <select
+                    className="input"
+                    value={form.parentProductId}
+                    onChange={(event) => updateForm("parentProductId", event.target.value)}
+                  >
+                    <option value="">No Parent SKU</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>{product.sku} · {product.product_model}</option>
+                    ))}
+                  </select>
+                </div>
 
                 <ProductField
                   label="Brand"

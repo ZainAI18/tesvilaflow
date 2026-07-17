@@ -62,6 +62,23 @@ export async function POST(request: NextRequest) {
   }
 
   const openingStock = Number(body.openingStock || 0);
+  const parentProductId = body.parentProductId || null;
+
+  if (parentProductId) {
+    const { data: parent, error: parentError } = await db
+      .from("products")
+      .select("id,parent_product_id")
+      .eq("id", parentProductId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (parentError || !parent || parent.parent_product_id) {
+      return NextResponse.json(
+        { error: "Please select a valid Parent SKU." },
+        { status: 400 },
+      );
+    }
+  }
 
   const { data, error } = await db
     .from("products")
@@ -77,6 +94,7 @@ export async function POST(request: NextRequest) {
       current_stock: openingStock,
       reserved_stock: 0,
       minimum_stock: Number(body.minimumStock || 0),
+      parent_product_id: parentProductId,
     })
     .select()
     .single();
@@ -92,4 +110,65 @@ export async function POST(request: NextRequest) {
     { product: data },
     { status: 201 },
   );
+}
+
+export async function PATCH(request: NextRequest) {
+  const auth = await requireApiSession(request);
+  if (auth.response) return auth.response;
+  const db = database();
+
+  if (!db) {
+    return NextResponse.json(
+      { error: "Database is not connected." },
+      { status: 503 },
+    );
+  }
+
+  const body = await request.json();
+  const productId = body.productId;
+  const parentProductId = body.parentProductId || null;
+
+  if (!productId) {
+    return NextResponse.json(
+      { error: "Product is required." },
+      { status: 400 },
+    );
+  }
+
+  if (parentProductId === productId) {
+    return NextResponse.json(
+      { error: "A Product cannot use itself as its Parent SKU." },
+      { status: 400 },
+    );
+  }
+
+  if (parentProductId) {
+    const { data: parent, error: parentError } = await db
+      .from("products")
+      .select("id,parent_product_id")
+      .eq("id", parentProductId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (parentError || !parent || parent.parent_product_id) {
+      return NextResponse.json(
+        { error: "Please select a valid Parent SKU." },
+        { status: 400 },
+      );
+    }
+  }
+
+  const { data, error } = await db
+    .from("products")
+    .update({ parent_product_id: parentProductId })
+    .eq("id", productId)
+    .is("deleted_at", null)
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ product: data });
 }

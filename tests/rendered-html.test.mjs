@@ -413,7 +413,7 @@ test("Delivery Order Only separates read-only history from current Invoice and E
   assert.match(workflow, /itemSource: linkedInvoice \? "extra"/);
   assert.match(workflow, /Not in Invoice/);
   assert.match(workflow, /Delivery quantity cannot exceed the remaining quantity of/);
-  assert.match(workflow, /This Invoice item has already been added to the current Delivery Order\./);
+  assert.match(workflow, /This Child SKU has already been added for the same Invoice item\./);
   assert.match(workflow, /This Extra Item has already been added to the current Delivery Order\./);
   assert.match(workflow, /previouslyDeliveredItems\(activeModalInvoice, savedDelivery\)/);
   assert.match(css, /\.previously-delivered-section/);
@@ -432,4 +432,33 @@ test("Delivery Order Only separates read-only history from current Invoice and E
   assert.match(workflow, /for \(const item of order\.items\)/);
   assert.doesNotMatch(invoiceReport, /Previously Delivered Items|item_source|itemSource/);
   assert.doesNotMatch(invoicePdf, /Previously Delivered Items|item_source|itemSource/);
+});
+
+test("Parent SKUs map Invoice items to independent Child inventory without combining stock", async () => {
+  const [workflow, productManager, productsApi, parentMigration, inventoryMigration, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/product-manager.tsx"),
+    read("app/api/products/route.ts"),
+    read("supabase/migrations/202607170004_product_parent_skus.sql"),
+    read("supabase/migrations/202607150001_inventory_reporting.sql"),
+    read("lib/supabase-server.ts"),
+  ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(productManager, /Parent SKU \(optional\)/);
+  assert.match(productManager, /No Parent SKU/);
+  assert.match(productManager, /updateParentSku/);
+  assert.match(productsApi, /parent_product_id: parentProductId/);
+  assert.match(productsApi, /export async function PATCH/);
+  assert.match(workflow, /product\.parent_product_id === item\.productId/);
+  assert.match(workflow, /Please select a Child SKU for Parent SKU/);
+  assert.match(workflow, /This Child SKU has already been added for the same Invoice item\./);
+  assert.match(workflow, /group\.quantity > group\.remaining/);
+  assert.match(parentMigration, /add column if not exists parent_product_id uuid/);
+  assert.match(parentMigration, /Every Child Product keeps its own independent opening\/current\/reserved stock/);
+  assert.match(parentMigration, /delivered_product\.parent_product_id = invoice_item\.product_id/);
+  assert.match(parentMigration, /child\.parent_product_id = invoice_item\.product_id/);
+  assert.match(parentMigration, /group by invoice_item_id, product_id having count\(\*\) > 1/);
+  assert.doesNotMatch(parentMigration, /update public\.products[\s\S]*current_stock/);
+  assert.match(inventoryMigration, /where id=i\.product_id/);
 });
