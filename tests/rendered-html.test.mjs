@@ -94,8 +94,8 @@ test("invoice and delivery-order method dropdowns persist through constrained da
   assert.match(workflow, /itemCollectLabel\(order\.itemCollectMethod\)/);
   assert.match(report, /invoice\.paymentMethod === "paynow"/);
   assert.match(report, /invoice\.paymentMethod === "terms"/);
-  assert.match(documentsApi, /create_invoice_with_do_v7/);
-  assert.match(documentsApi, /update_delivery_order_document_v7/);
+  assert.match(documentsApi, /create_invoice_with_do_v8/);
+  assert.match(documentsApi, /update_delivery_order_document_v8/);
   assert.match(migration, /item_collect_method in \('delivery','self_collect'\)/);
   assert.match(migration, /payment_method in \('paynow','cash','terms'\)/);
   assert.match(migration, /update public\.delivery_orders[\s\S]*invoice_id = p_id/);
@@ -110,7 +110,7 @@ test("item descriptions are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "description", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "description", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /readOnly value=\{row\.description\}/);
-  assert.match(documentsApi, /create_invoice_with_do_v7/);
+  assert.match(documentsApi, /create_invoice_with_do_v8/);
   assert.match(documentsApi, /update_invoice_document_v7/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
@@ -126,8 +126,8 @@ test("item brands are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "brand", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "brand", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /updated\(row\.id, "brand"/);
-  assert.match(documentsApi, /create_invoice_with_do_v7/);
-  assert.match(documentsApi, /update_delivery_order_document_v7/);
+  assert.match(documentsApi, /create_invoice_with_do_v8/);
+  assert.match(documentsApi, /update_delivery_order_document_v8/);
   assert.match(migration, /set brand = coalesce\(payload_item\.value->>'brand', ''\)/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
@@ -150,10 +150,10 @@ test("delivery-order-only supports an optional saved Invoice selector", async ()
   assert.match(workflow, /if \(!value\.trim\(\)\) \{\s+clearSelectedInvoice\(\)/);
   assert.match(workflow, /if \(!value\.trim\(\)\) \{\s+clearModalInvoice\(\)/);
   assert.match(workflow, /invoiceId: selectedInvoiceId \|\| undefined/);
-  assert.match(workflow, /\["Invoice No\.", order\.invoiceNumber \|\|/);
+  assert.match(workflow, /Invoice No\.: \$\{order\.invoiceNumber \|\|/);
   assert.match(documentsApi, /invoice_id,invoice_number/);
-  assert.match(documentsApi, /create_delivery_order_only_v7/);
-  assert.match(documentsApi, /update_delivery_order_document_v7/);
+  assert.match(documentsApi, /create_delivery_order_only_v8/);
+  assert.match(documentsApi, /update_delivery_order_document_v8/);
   assert.match(migration, /add column if not exists invoice_number text/);
   assert.match(migration, /set invoice_id = v_invoice_id/);
   assert.match(migration, /Selected Invoice was not found/);
@@ -201,7 +201,7 @@ test("one Invoice supports multiple partial Delivery Orders without over-deliver
   assert.match(database, /fnkkeadpkjshsnjmoznl/);
   assert.match(documentsApi, /invoice_item_id/);
   assert.match(documentsApi, /related_delivery_orders:delivery_orders/);
-  assert.match(documentsApi, /create_delivery_order_only_v7/);
+  assert.match(documentsApi, /create_delivery_order_only_v8/);
   assert.match(workflow, /Invoice Qty/);
   assert.match(workflow, /Previously Delivered/);
   assert.match(workflow, /Remaining/);
@@ -297,4 +297,39 @@ test("Invoice View and PDF share the redesigned A4 report data and repository as
   assert.match(css, /@page \{ size: A4 portrait; margin: 0; \}/);
   assert.match(css, /page-break-inside: avoid/);
   assert.match(css, /body \* \{ visibility: hidden !important; \}/);
+});
+
+test("Delivery Order contacts remain separate from Invoice and customer contacts", async () => {
+  const [workflow, documentsApi, migration, css, invoiceReport, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/api/documents/route.ts"),
+    read("supabase/migrations/202607170001_delivery_contacts.sql"),
+    read("app/globals.css"),
+    read("lib/invoice-report.ts"),
+    read("lib/supabase-server.ts"),
+  ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(workflow, /Delivery Contact Person/);
+  assert.match(workflow, /Delivery Contact Number/);
+  assert.match(workflow, /deliveryContact,/);
+  assert.match(workflow, /deliveryPhone,/);
+  assert.match(workflow, /order\.deliveryContact \|\| order\.customer\.attention/);
+  assert.match(workflow, /order\.deliveryPhone \|\| order\.customer\.phone/);
+  assert.match(workflow, /\["Delivery Address", wrap\(regular, 8, order\.deliveryAddress/);
+  assert.match(workflow, /\["Contact Person", wrap\(regular, 8, reportDeliveryContact/);
+  assert.match(workflow, /\["Contact Number", wrap\(regular, 8, reportDeliveryPhone/);
+  assert.match(workflow, /\["DO Date", \[date\(order\.deliveryDate\)\]\]/);
+  assert.match(css, /\.document-delivery-contact-row/);
+  assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(documentsApi, /delivery_contact_person,delivery_contact_number/);
+  assert.match(documentsApi, /create_invoice_with_do_v8/);
+  assert.match(documentsApi, /create_delivery_order_only_v8/);
+  assert.match(documentsApi, /update_delivery_order_document_v8/);
+  assert.match(migration, /add column if not exists delivery_contact_person text/);
+  assert.match(migration, /add column if not exists delivery_contact_number text/);
+  assert.match(migration, /create_invoice_with_do_v7\(p_payload\)/);
+  assert.match(migration, /create_delivery_order_only_v7\(p_payload\)/);
+  assert.match(migration, /update_delivery_order_document_v7\(p_id, p_payload\)/);
+  assert.doesNotMatch(invoiceReport, /deliveryContact|deliveryPhone|Delivery Contact/);
 });
