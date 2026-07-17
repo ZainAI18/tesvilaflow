@@ -2257,6 +2257,100 @@ function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
   return y - 25;
 }
 
+const DELIVERY_ORDER_TERMS = [
+  "All goods listed above are received in good condition unless otherwise stated at the time of delivery.",
+  "Any claim of damaged or missing goods must be made in writing within 24 hours upon receipt of goods. Claims made after this period may not be entertained.",
+  "Ownership of the goods remains with TESVILA PTE LTD until full payment is received.",
+  "Delivery is considered complete once the goods are handed over to the stated delivery address or an authorized representative.",
+  "Additional delivery charges may apply if no one is present to receive the goods at the delivery location during the scheduled delivery time.",
+  "The customer is responsible for inspecting the goods immediately upon delivery. Any discrepancy should be noted on this delivery order.",
+  "Goods sold and delivered are not returnable unless prior agreement is made in writing.",
+  "If installation is not included, TESVILA PTE LTD is not responsible for any damage or defect arising from improper installation by third parties.",
+  "By signing this delivery order, the customer acknowledges that the goods are delivered as listed and agrees to the terms stated above.",
+] as const;
+
+const DELIVERY_ORDER_STATIC_FOOTER_TOP = 270;
+
+function drawDeliveryOrderStaticFooter(
+  kit: PdfKit,
+  page: PDFPage,
+  order: DORecord,
+) {
+  page.drawLine({
+    start: { x: 36, y: DELIVERY_ORDER_STATIC_FOOTER_TOP },
+    end: { x: 559, y: DELIVERY_ORDER_STATIC_FOOTER_TOP },
+    thickness: 0.8,
+    color: INK,
+  });
+  page.drawText("DELIVERY ORDER TERMS & CONDITIONS", {
+    x: 36,
+    y: DELIVERY_ORDER_STATIC_FOOTER_TOP - 14,
+    size: 7,
+    font: kit.bold,
+    color: GREEN,
+  });
+  let termsY = DELIVERY_ORDER_STATIC_FOOTER_TOP - 27;
+  DELIVERY_ORDER_TERMS.forEach((term, index) => {
+    const lines = wrap(kit.regular, 5.5, `${index + 1}. ${term}`, 523);
+    drawLines(page, kit.regular, 5.5, lines, 36, termsY, 6.6, INK);
+    termsY -= lines.length * 6.6;
+  });
+
+  const signatureY = 93;
+  page.drawLine({
+    start: { x: 36, y: signatureY },
+    end: { x: 190, y: signatureY },
+    thickness: 0.7,
+    color: INK,
+  });
+  page.drawText("Driver / Delivery Personnel", {
+    x: 36,
+    y: signatureY - 13,
+    size: 7,
+    font: kit.bold,
+  });
+  page.drawLine({
+    start: { x: 220, y: signatureY },
+    end: { x: 390, y: signatureY },
+    thickness: 0.7,
+    color: INK,
+  });
+  page.drawText("Customer Signature", {
+    x: 220,
+    y: signatureY - 13,
+    size: 7,
+    font: kit.bold,
+  });
+  page.drawRectangle({
+    x: 420,
+    y: signatureY - 52,
+    width: 135,
+    height: 57,
+    borderColor: LINE,
+    borderWidth: 1,
+  });
+  page.drawText("CUSTOMER STAMP", {
+    x: 448,
+    y: signatureY - 27,
+    size: 7,
+    font: kit.bold,
+    color: MUTED,
+  });
+  page.drawText("Received Date: ____________________", {
+    x: 220,
+    y: signatureY - 47,
+    size: 7,
+    font: kit.regular,
+  });
+  page.drawText(`Issued by: ${order.createdBy}`, {
+    x: 36,
+    y: signatureY - 47,
+    size: 7,
+    font: kit.bold,
+    color: INK,
+  });
+}
+
 export async function generateInvoicePdf(inv: InvoiceRecord) {
   const [logoResponse, qrResponse] = await Promise.all([
     fetch(tesvilaLogo.src),
@@ -2319,7 +2413,7 @@ export async function generateDOPdf(order: DORecord) {
 
   const detailBottom = Math.min(doCustomerY - 24, deliveryInformationY);
   let y = doTableHead(kit, page, Math.min(638, detailBottom - 18));
-  const reserve = 245;
+  const reserve = DELIVERY_ORDER_STATIC_FOOTER_TOP + 78;
   for (const item of order.items) {
     const details = wrap(
         regular,
@@ -2356,8 +2450,14 @@ export async function generateDOPdf(order: DORecord) {
     y -= h;
     line(page, y);
   }
-  const footerHeight = 225;
-  if (y - footerHeight < 30) {
+  const finalRemarkLines = wrap(
+    regular,
+    7,
+    order.remarks || "Please inspect all items upon delivery.",
+    510,
+  );
+  const dynamicFooterHeight = Math.max(50, finalRemarkLines.length * 9 + 32);
+  if (y - dynamicFooterHeight < DELIVERY_ORDER_STATIC_FOOTER_TOP + 12) {
     page = doc.addPage([595, 842]);
     kit.pages.push(page);
     companyHeader(kit, page, "DELIVERY ORDER", order.doNumber, true);
@@ -2388,91 +2488,12 @@ export async function generateDOPdf(order: DORecord) {
     page,
     regular,
     7,
-    wrap(
-      regular,
-      7,
-      order.remarks || "Please inspect all items upon delivery.",
-      510,
-    ),
+    finalRemarkLines,
     36,
     y - 29,
     9,
     MUTED,
   );
-  page.drawText("DELIVERY ORDER TERMS & CONDITIONS", {
-    x: 36,
-    y: y - 57,
-    size: 7,
-    font: bold,
-    color: GREEN,
-  });
-  drawLines(
-    page,
-    regular,
-    6.5,
-    wrap(
-      regular,
-      6.5,
-      "Goods must be inspected on delivery. Any discrepancy or damage must be reported within 24 hours. Signature confirms receipt in good order and condition.",
-      510,
-    ),
-    36,
-    y - 71,
-    8,
-    MUTED,
-  );
-  const sy = y - 128;
-  page.drawLine({
-    start: { x: 36, y: sy },
-    end: { x: 190, y: sy },
-    thickness: 0.7,
-    color: INK,
-  });
-  page.drawText("Driver / Delivery Personnel", {
-    x: 36,
-    y: sy - 13,
-    size: 7,
-    font: bold,
-  });
-  page.drawLine({
-    start: { x: 220, y: sy },
-    end: { x: 390, y: sy },
-    thickness: 0.7,
-    color: INK,
-  });
-  page.drawText("Customer Signature", {
-    x: 220,
-    y: sy - 13,
-    size: 7,
-    font: bold,
-  });
-  page.drawRectangle({
-    x: 420,
-    y: sy - 52,
-    width: 135,
-    height: 57,
-    borderColor: LINE,
-    borderWidth: 1,
-  });
-  page.drawText("CUSTOMER STAMP", {
-    x: 448,
-    y: sy - 27,
-    size: 7,
-    font: bold,
-    color: MUTED,
-  });
-  page.drawText("Received Date: ____________________", {
-    x: 220,
-    y: sy - 47,
-    size: 7,
-    font: regular,
-  });
-  page.drawText(`Issued by: ${order.createdBy}`, {
-    x: 36,
-    y: sy - 47,
-    size: 7,
-    font: bold,
-    color: INK,
-  });
+  drawDeliveryOrderStaticFooter(kit, page, order);
   await savePdf(kit, `${order.doNumber}-Delivery-Order.pdf`);
 }
