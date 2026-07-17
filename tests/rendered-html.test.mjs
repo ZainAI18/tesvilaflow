@@ -333,3 +333,29 @@ test("Delivery Order contacts remain separate from Invoice and customer contacts
   assert.match(migration, /update_delivery_order_document_v7\(p_id, p_payload\)/);
   assert.doesNotMatch(invoiceReport, /deliveryContact|deliveryPhone|Delivery Contact/);
 });
+
+test("Delivery Order terms and signatures stay in a static final-page footer", async () => {
+  const workflow = await read("app/document-workflow.tsx");
+  const terms = [
+    "All goods listed above are received in good condition unless otherwise stated at the time of delivery.",
+    "Any claim of damaged or missing goods must be made in writing within 24 hours upon receipt of goods. Claims made after this period may not be entertained.",
+    "Ownership of the goods remains with TESVILA PTE LTD until full payment is received.",
+    "Delivery is considered complete once the goods are handed over to the stated delivery address or an authorized representative.",
+    "Additional delivery charges may apply if no one is present to receive the goods at the delivery location during the scheduled delivery time.",
+    "The customer is responsible for inspecting the goods immediately upon delivery. Any discrepancy should be noted on this delivery order.",
+    "Goods sold and delivered are not returnable unless prior agreement is made in writing.",
+    "If installation is not included, TESVILA PTE LTD is not responsible for any damage or defect arising from improper installation by third parties.",
+    "By signing this delivery order, the customer acknowledges that the goods are delivered as listed and agrees to the terms stated above.",
+  ];
+
+  terms.forEach((term) => assert.match(workflow, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+  assert.match(workflow, /const DELIVERY_ORDER_STATIC_FOOTER_TOP = 270/);
+  assert.match(workflow, /function drawDeliveryOrderStaticFooter/);
+  assert.match(workflow, /const reserve = DELIVERY_ORDER_STATIC_FOOTER_TOP \+ 78/);
+  assert.match(workflow, /y - dynamicFooterHeight < DELIVERY_ORDER_STATIC_FOOTER_TOP \+ 12/);
+  assert.match(workflow, /drawDeliveryOrderStaticFooter\(kit, page, order\)/);
+  assert.match(workflow, /Driver \/ Delivery Personnel/);
+  assert.match(workflow, /Customer Signature/);
+  assert.match(workflow, /CUSTOMER STAMP/);
+  assert.match(workflow, /Received Date:/);
+});
