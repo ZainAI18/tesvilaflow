@@ -2348,13 +2348,6 @@ function drawDeliveryOrderStaticFooter(
     thickness: 0.7,
     color: INK,
   });
-  page.drawText("Goods Checked & Received In Good Condition", {
-    x: 350,
-    y: signatureY + 16,
-    size: 6.5,
-    font: kit.bold,
-    color: INK,
-  });
   page.drawText("Customer Signature", {
     x: 350,
     y: signatureY - 13,
