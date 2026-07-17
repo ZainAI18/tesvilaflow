@@ -2343,34 +2343,26 @@ function drawDeliveryOrderStaticFooter(
     font: kit.bold,
   });
   page.drawLine({
-    start: { x: 220, y: signatureY },
-    end: { x: 390, y: signatureY },
+    start: { x: 350, y: signatureY },
+    end: { x: 555, y: signatureY },
     thickness: 0.7,
     color: INK,
   });
+  page.drawText("Goods Checked & Received In Good Condition", {
+    x: 350,
+    y: signatureY + 16,
+    size: 6.5,
+    font: kit.bold,
+    color: INK,
+  });
   page.drawText("Customer Signature", {
-    x: 220,
+    x: 350,
     y: signatureY - 13,
     size: 7,
     font: kit.bold,
   });
-  page.drawRectangle({
-    x: 420,
-    y: signatureY - 52,
-    width: 135,
-    height: 57,
-    borderColor: LINE,
-    borderWidth: 1,
-  });
-  page.drawText("CUSTOMER STAMP", {
-    x: 448,
-    y: signatureY - 27,
-    size: 7,
-    font: kit.bold,
-    color: MUTED,
-  });
   page.drawText("Received Date: ____________________", {
-    x: 220,
+    x: 350,
     y: signatureY - 47,
     size: 7,
     font: kit.regular,
