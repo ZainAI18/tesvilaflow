@@ -28,6 +28,7 @@ export const INVOICE_TERMS = [
 export type InvoiceReportSource = {
   invoiceNumber: string;
   invoiceDate: string;
+  titleOfInvoice?: string;
   poNumber?: string;
   customer: {
     name?: string;
@@ -160,7 +161,7 @@ export function buildInvoiceReportData(invoice: InvoiceReportSource) {
       contactName: safeText(invoice.customer.attention, "-"),
       contactNumber: safeText(invoice.customer.phone, "-"),
     },
-    sectionTitle: "Supply Sanitary Ware",
+    sectionTitle: safeText(invoice.titleOfInvoice, "Supply Sanitary Ware"),
     items,
     minimumTableRows: Math.max(3, items.length),
     notice: CONFIDENTIAL_PRICING_NOTICE,

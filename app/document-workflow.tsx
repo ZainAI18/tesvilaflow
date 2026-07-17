@@ -88,6 +88,7 @@ export type InvoiceRecord = {
   collectionMethod: string;
   installationOption: string;
   remarks: string;
+  titleOfInvoice: string;
   createdBy: string;
   issuedByUserId?: string;
   createdAt: string;
@@ -603,6 +604,7 @@ function DocumentForm({
     [phone, setPhone] = useState(""),
     [po, setPO] = useState(""),
     [remarks, setRemarks] = useState(""),
+    [titleOfInvoice, setTitleOfInvoice] = useState("Supply Sanitary Ware"),
     [itemCollectMethod, setItemCollectMethod] = useState(""),
     [paymentMethod, setPaymentMethod] = useState(""),
     [selectedInvoiceId, setSelectedInvoiceId] = useState(""),
@@ -774,6 +776,7 @@ function DocumentForm({
           paymentMethod,
           collectionMethod: "Delivery by Tesvila",
           installationOption: "Supply only",
+          titleOfInvoice: titleOfInvoice.trim() || "Supply Sanitary Ware",
         };
         const saved = saveMode === "invoice-only"
           ? await store.saveInvoiceOnly(invoiceDraft)
@@ -913,6 +916,7 @@ function DocumentForm({
             </div>}
           </div>
           <div className="field"><label>Remarks</label><textarea className="input" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>
+          {invoice && <div className="field"><label>Title of Invoice</label><input className="input" value={titleOfInvoice} onChange={(e) => setTitleOfInvoice(e.target.value)} /></div>}
         </div>
         <div className="items-editor">
           <div className={`edit-row header ${selectedInvoiceId ? "partial-delivery" : ""}`}>
@@ -1845,6 +1849,15 @@ function RecordModal({
                     <option>Overdue</option>
                   </select>
                 </div>
+                <div className="field">
+                  <label>Title of Invoice</label>
+                  <input
+                    className="input"
+                    disabled={readOnly}
+                    value={inv.titleOfInvoice || "Supply Sanitary Ware"}
+                    onChange={(e) => setField("titleOfInvoice", e.target.value)}
+                  />
+                </div>
               </>
             )}
           </div>
@@ -2104,7 +2117,7 @@ function RecordModal({
   );
 }
 
-const GREEN = rgb(0.055, 0.22, 0.145),
+const TESVILA_BLUE = rgb(0.02, 0.23, 0.49),
   INK = rgb(0.12, 0.14, 0.13),
   MUTED = rgb(0.38, 0.42, 0.4),
   LINE = rgb(0.82, 0.84, 0.83);
@@ -2192,44 +2205,39 @@ function companyHeader(
   no: string,
   continuation = false,
 ) {
-  page.drawRectangle({ x: 0, y: 790, width: 595, height: 52, color: GREEN });
-  page.drawRectangle({
-    x: 30,
-    y: 796,
-    width: 44,
-    height: 40,
-    color: rgb(1, 1, 1),
-  });
   const logoSize = kit.logo.scaleToFit(42, 38);
   page.drawImage(kit.logo, {
-    x: 31 + (42 - logoSize.width) / 2,
-    y: 797 + (38 - logoSize.height) / 2,
+    x: 36 + (42 - logoSize.width) / 2,
+    y: 798 + (38 - logoSize.height) / 2,
     width: logoSize.width,
     height: logoSize.height,
   });
   page.drawText("TESVILA PTE LTD", {
-    x: 82,
-    y: 817,
+    x: 88,
+    y: 822,
     size: 14,
     font: kit.bold,
-    color: rgb(1, 1, 1),
+    color: TESVILA_BLUE,
   });
   page.drawText(
-    "4001 Ang Mo Kio Industrial Park 1, Ang Mo Kio Ave 10, 01-09, 569622  |  +65 8189 5198",
-    { x: 82, y: 804, size: 7, font: kit.regular, color: rgb(0.9, 0.95, 0.92) },
+    "4001 Ang Mo Kio Industrial Park 1, #01-09, Singapore 569622",
+    { x: 88, y: 809, size: 7, font: kit.regular, color: INK },
   );
   page.drawText(
-    "sales@tesvila.com.sg  |  www.tesvila.com.sg  |  UEN 201604567R",
-    { x: 82, y: 795, size: 7, font: kit.regular, color: rgb(0.9, 0.95, 0.92) },
+    "Tel: +65 8189 5198  |  Co./GST Reg.No. 201604567R",
+    { x: 88, y: 798, size: 7, font: kit.regular, color: INK },
   );
+  page.drawText("Email: sales@tesvila.com.sg", { x: 421, y: 820, size: 7, font: kit.regular, color: INK });
+  page.drawText("Web: www.tesvila.com.sg", { x: 433, y: 808, size: 7, font: kit.regular, color: INK });
+  page.drawLine({ start: { x: 36, y: 785 }, end: { x: 559, y: 785 }, thickness: 1.2, color: TESVILA_BLUE });
   page.drawText(continuation ? `${title} — CONTINUED` : title, {
     x: 36,
-    y: 762,
+    y: 758,
     size: 18,
     font: kit.bold,
-    color: GREEN,
+    color: TESVILA_BLUE,
   });
-  page.drawText(no, { x: 455, y: 764, size: 10, font: kit.bold, color: GREEN });
+  page.drawText(no, { x: 455, y: 760, size: 10, font: kit.bold, color: TESVILA_BLUE });
 }
 function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
   page.drawRectangle({
@@ -2237,7 +2245,7 @@ function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
     y: y - 18,
     width: 523,
     height: 20,
-    color: GREEN,
+    color: TESVILA_BLUE,
   });
   [
     ["SKU", 42],
@@ -2287,7 +2295,7 @@ function drawDeliveryOrderStaticFooter(
     y: DELIVERY_ORDER_STATIC_FOOTER_TOP - 14,
     size: 7,
     font: kit.bold,
-    color: GREEN,
+    color: TESVILA_BLUE,
   });
   let termsY = DELIVERY_ORDER_STATIC_FOOTER_TOP - 27;
   DELIVERY_ORDER_TERMS.forEach((term, index) => {
@@ -2468,14 +2476,14 @@ export async function generateDOPdf(order: DORecord) {
     y: y - 15,
     size: 7,
     font: bold,
-    color: GREEN,
+    color: TESVILA_BLUE,
   });
   page.drawText("ITEM COLLECT METHOD", {
     x: 360,
     y: y - 15,
     size: 7,
     font: bold,
-    color: GREEN,
+    color: TESVILA_BLUE,
   });
   page.drawText(itemCollectLabel(order.itemCollectMethod), {
     x: 465,

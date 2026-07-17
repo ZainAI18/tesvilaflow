@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     db
       .from("invoices")
       .select(
-        "id,invoice_number,invoice_date,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_rate,subtotal,gst_amount,grand_total,deposit,balance,item_collect_method,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),related_delivery_orders:delivery_orders(id,do_number,delivery_date,status,deleted_at,items:delivery_order_items(invoice_item_id,quantity))",
+        "id,invoice_number,invoice_date,invoice_title,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_rate,subtotal,gst_amount,grand_total,deposit,balance,item_collect_method,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),related_delivery_orders:delivery_orders(id,do_number,delivery_date,status,deleted_at,items:delivery_order_items(invoice_item_id,quantity))",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
@@ -132,6 +132,7 @@ export async function GET(req: NextRequest) {
     collectionMethod: "Delivery by Tesvila",
     installationOption: "Supply only",
     remarks: x.remarks || "",
+    titleOfInvoice: x.invoice_title || "Supply Sanitary Ware",
     createdBy: x.issued_by_display_name || "Tesvila User",
     issuedByUserId: x.issued_by_user_id || undefined,
     createdAt: x.created_at,
@@ -179,9 +180,9 @@ export async function POST(req: NextRequest) {
     );
   const fn =
     body.type === "invoice_with_do"
-      ? "create_invoice_with_do_v8"
+      ? "create_invoice_with_do_v9"
       : body.type === "invoice_only"
-        ? "create_invoice_only_v7"
+        ? "create_invoice_only_v8"
         : "create_delivery_order_only_v8";
   const payload = {
     ...body,
@@ -205,7 +206,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const fn =
     body.type === "invoice"
-      ? "update_invoice_document_v7"
+      ? "update_invoice_document_v8"
       : body.type === "delivery_order"
         ? "update_delivery_order_document_v8"
         : null;
