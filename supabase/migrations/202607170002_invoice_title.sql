@@ -1,16 +1,16 @@
 -- Store the user-editable heading shown directly above the Invoice item table.
--- Historical documents receive the approved existing heading as their default.
+-- Historical documents use the approved heading through the API/report fallback.
 
 alter table public.invoices
   add column if not exists invoice_title text;
 
-update public.invoices
-set invoice_title = 'Supply Sanitary Ware'
-where invoice_title is null or trim(invoice_title) = '';
-
 alter table public.invoices
-  alter column invoice_title set default 'Supply Sanitary Ware',
-  alter column invoice_title set not null;
+  alter column invoice_title set default 'Supply Sanitary Ware';
+
+-- Do not backfill historical rows with UPDATE here. Some older databases retain
+-- legacy payment_method values under a NOT VALID check constraint; PostgreSQL
+-- would re-check those unrelated values and reject the title backfill. The API
+-- and report mapping display this same default whenever invoice_title is null.
 
 comment on column public.invoices.invoice_title is
   'User-editable Invoice report item-section heading.';
