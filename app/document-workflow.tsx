@@ -49,6 +49,8 @@ export type DocumentItem = {
   invoiceQuantity?: number;
   previouslyDeliveredQuantity?: number;
   remainingQuantity?: number;
+  itemSource?: "invoice" | "extra";
+  relatedDeliveryOrderNumbers?: string[];
 };
 export type RelatedDeliveryOrder = {
   id: string;
@@ -401,13 +403,20 @@ const invoiceItemsForDeliveryOrder = (
   record: InvoiceRecord,
   currentOrder?: DORecord,
 ) =>
-  record.items
-    .map((item) => {
-      const currentItem = currentOrder?.items.find(
-        (entry) => entry.invoiceItemId === item.id,
-      );
+  (currentOrder?.items || []).map((currentItem) => {
+      if (!currentItem.invoiceItemId) {
+        return {
+          ...currentItem,
+          itemSource: "extra" as const,
+          invoiceQuantity: 0,
+          previouslyDeliveredQuantity: 0,
+          remainingQuantity: undefined,
+        };
+      }
+      const item = record.items.find((entry) => entry.id === currentItem.invoiceItemId);
+      if (!item) return { ...currentItem, itemSource: "invoice" as const };
       const deliveredIncludingCurrent = item.previouslyDeliveredQuantity || 0;
-      const currentQuantity = currentItem?.quantity || 0;
+      const currentQuantity = currentItem.quantity || 0;
       const currentCountedQuantity = currentOrder?.status === "Cancelled"
         ? 0
         : currentQuantity;
@@ -420,21 +429,71 @@ const invoiceItemsForDeliveryOrder = (
         item.quantity - previouslyDeliveredQuantity,
       );
       return {
-        ...(currentItem || item),
-        id: currentItem?.id || crypto.randomUUID(),
+        ...currentItem,
         invoiceItemId: item.id,
+        itemSource: "invoice" as const,
         invoiceQuantity: item.quantity,
         previouslyDeliveredQuantity,
         remainingQuantity,
-        quantity: currentItem?.quantity || remainingQuantity,
+        quantity: currentItem.quantity,
         discount: 0,
       };
-    })
-    .filter((item) =>
-      currentOrder
-        ? currentOrder.items.some((entry) => entry.invoiceItemId === item.invoiceItemId)
-        : item.remainingQuantity! > 0,
-    );
+    });
+
+const previouslyDeliveredItems = (
+  record: InvoiceRecord,
+  currentOrder?: DORecord,
+) => record.items.map((item) => {
+  const currentItem = currentOrder?.items.find((entry) => entry.invoiceItemId === item.id);
+  const currentCountedQuantity = currentOrder?.status === "Cancelled"
+    ? 0
+    : currentItem?.quantity || 0;
+  const previouslyDeliveredQuantity = Math.max(
+    0,
+    (item.previouslyDeliveredQuantity || 0) - currentCountedQuantity,
+  );
+  return {
+    ...item,
+    itemSource: "invoice" as const,
+    invoiceQuantity: item.quantity,
+    previouslyDeliveredQuantity,
+    remainingQuantity: Math.max(0, item.quantity - previouslyDeliveredQuantity),
+    relatedDeliveryOrderNumbers: (item.relatedDeliveryOrderNumbers || []).filter(
+      (number) => number !== currentOrder?.doNumber,
+    ),
+  };
+}).filter((item) => (item.previouslyDeliveredQuantity || 0) > 0);
+
+function PreviouslyDeliveredItems({ items }: { items: DocumentItem[] }) {
+  return (
+    <section className="previously-delivered-section">
+      <div className="row between">
+        <h3>Previously Delivered Items</h3>
+        <span className="status gray">Read-only history</span>
+      </div>
+      {!items.length ? (
+        <div className="previously-delivered-empty">No previously delivered items.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table previously-delivered-table">
+            <thead><tr><th>SKU</th><th>Product Type</th><th>Description / Brand</th><th>Invoice Qty</th><th>Previously Delivered</th><th>Remaining</th><th>Related DO</th></tr></thead>
+            <tbody>{items.map((item) => (
+              <tr key={item.id}>
+                <td><b>{item.sku}</b><small>{item.model}</small></td>
+                <td>{item.type}</td>
+                <td>{item.description}<small>{item.brand}</small></td>
+                <td>{item.invoiceQuantity || 0}</td>
+                <td>{item.previouslyDeliveredQuantity || 0}</td>
+                <td><b>{item.remainingQuantity || 0}</b></td>
+                <td>{item.relatedDeliveryOrderNumbers?.join(", ") || "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 const emptyCustomerSnapshot = (): CustomerSnapshot => ({
   customerId: undefined,
@@ -566,7 +625,7 @@ function emptyItem(): DocumentItem {
 
 function itemFromProduct(item: DocumentItem, product: ProductOption | undefined, typedSku: string): DocumentItem {
   if (!product) {
-    return { ...item, productId: "", sku: typedSku, model: "", type: "", description: "", brand: "", unitPrice: 0, unitCost: 0 };
+    return { ...item, productId: "", sku: typedSku, model: "", type: "", description: "", brand: "", unitPrice: 0, unitCost: 0, invoiceItemId: undefined, itemSource: undefined, invoiceQuantity: undefined, previouslyDeliveredQuantity: undefined, remainingQuantity: undefined };
   }
   return {
     ...item,
@@ -578,6 +637,65 @@ function itemFromProduct(item: DocumentItem, product: ProductOption | undefined,
     brand: product.brand,
     unitPrice: Number(product.selling_price || 0),
     unitCost: Number(product.cost_price || 0),
+  };
+}
+
+function selectDeliveryProduct(
+  row: DocumentItem,
+  product: ProductOption | undefined,
+  typedSku: string,
+  linkedInvoice: InvoiceRecord | undefined,
+  currentItems: DocumentItem[],
+  currentOrder?: DORecord,
+) {
+  const base = itemFromProduct(row, product, typedSku);
+  if (!product) return { item: base };
+  const otherItems = currentItems.filter((item) => item.id !== row.id);
+  const invoiceMatches = (linkedInvoice?.items || []).filter(
+    (item) => item.productId === product.id || item.sku === product.sku,
+  );
+  const availableInvoiceItem = invoiceMatches.find(
+    (item) => !otherItems.some((current) => current.invoiceItemId === item.id),
+  );
+  if (invoiceMatches.length && !availableInvoiceItem) {
+    return { item: row, error: "This Invoice item has already been added to the current Delivery Order." };
+  }
+  if (availableInvoiceItem) {
+    const currentSavedItem = currentOrder?.items.find(
+      (item) => item.invoiceItemId === availableInvoiceItem.id,
+    );
+    const currentCountedQuantity = currentOrder?.status === "Cancelled"
+      ? 0
+      : currentSavedItem?.quantity || 0;
+    const previouslyDeliveredQuantity = Math.max(
+      0,
+      (availableInvoiceItem.previouslyDeliveredQuantity || 0) - currentCountedQuantity,
+    );
+    return {
+      item: {
+        ...base,
+        invoiceItemId: availableInvoiceItem.id,
+        itemSource: "invoice" as const,
+        invoiceQuantity: availableInvoiceItem.quantity,
+        previouslyDeliveredQuantity,
+        remainingQuantity: Math.max(0, availableInvoiceItem.quantity - previouslyDeliveredQuantity),
+        quantity: 0,
+      },
+    };
+  }
+  if (otherItems.some((item) => item.itemSource === "extra" && item.productId === product.id)) {
+    return { item: row, error: "This Extra Item has already been added to the current Delivery Order." };
+  }
+  return {
+    item: {
+      ...base,
+      invoiceItemId: undefined,
+      itemSource: linkedInvoice ? "extra" as const : undefined,
+      invoiceQuantity: linkedInvoice ? 0 : undefined,
+      previouslyDeliveredQuantity: linkedInvoice ? 0 : undefined,
+      remainingQuantity: undefined,
+      quantity: 0,
+    },
   };
 }
 
@@ -618,6 +736,12 @@ function DocumentForm({
     ),
     gst = subtotal * 0.09,
     total = subtotal + gst;
+  const selectedInvoice = !invoice && selectedInvoiceId
+    ? store.invoices.find((entry) => entry.id === selectedInvoiceId)
+    : undefined;
+  const historicalItems = selectedInvoice
+    ? previouslyDeliveredItems(selectedInvoice)
+    : [];
   const update = (
     id: string,
     key: keyof DocumentItem,
@@ -626,7 +750,14 @@ function DocumentForm({
     setItems((rows) =>
       rows.map((r) => (r.id === id ? { ...r, [key]: value } : r)),
     );
-  const add = () => setItems((rows) => [...rows, emptyItem()]);
+  const add = () => {
+    if (!invoice && items.some((item) => !item.productId)) {
+      setError("Complete the current item before adding another item.");
+      return;
+    }
+    setError("");
+    setItems((rows) => [...rows, emptyItem()]);
+  };
   function applySelectedInvoice(selected: InvoiceRecord) {
     setSelectedInvoiceId(selected.id);
     setSelectedInvoiceNumber(selected.invoiceNumber);
@@ -640,7 +771,7 @@ function DocumentForm({
     setDeliveryContact("");
     setDeliveryPhone("");
     setItemCollectMethod(selected.itemCollectMethod || "");
-    setItems(invoiceItemsForDeliveryOrder(selected));
+    setItems([]);
   }
   function clearDeliveryOrderDetails() {
     setCustomerId("");
@@ -720,7 +851,13 @@ function DocumentForm({
   }
   function chooseProduct(id: string, value: string) {
     const product = reference.products.find((entry) => entry.sku.toLowerCase() === value.trim().toLowerCase());
-    setItems((rows) => rows.map((row) => row.id === id ? itemFromProduct(row, product, value) : row));
+    const row = items.find((entry) => entry.id === id);
+    if (!row) return;
+    const selected = invoice || !selectedInvoice
+      ? { item: itemFromProduct(row, product, value) }
+      : selectDeliveryProduct(row, product, value, selectedInvoice, items);
+    setError(selected.error || "");
+    setItems((rows) => rows.map((entry) => entry.id === id ? selected.item : entry));
   }
   function validationError() {
     if (!customerName.trim()) return "Customer company is required.";
@@ -732,17 +869,22 @@ function DocumentForm({
       const item = items[index];
       const product = reference.products.find((entry) => entry.id === item.productId && entry.sku === item.sku);
       if (!product) return `Item ${index + 1}: Please select a valid SKU.`;
-      if (selectedInvoiceId && !item.invoiceItemId)
-        return `Item ${index + 1}: Please select an item from the linked Invoice.`;
       if (item.quantity <= 0) return `Item ${index + 1}: Quantity must be greater than zero.`;
       if (
         selectedInvoiceId &&
+        item.invoiceItemId &&
         item.remainingQuantity !== undefined &&
         item.quantity > item.remainingQuantity
       )
-        return `Item ${index + 1}: Current Delivery Quantity cannot exceed the Remaining Quantity of ${item.remainingQuantity}.`;
+        return `Item ${index + 1}: Delivery quantity cannot exceed the remaining quantity of ${item.remainingQuantity}.`;
       if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
     }
+    const invoiceItemIds = items.flatMap((item) => item.invoiceItemId ? [item.invoiceItemId] : []);
+    if (new Set(invoiceItemIds).size !== invoiceItemIds.length)
+      return "This Invoice item has already been added to the current Delivery Order.";
+    const extraProductIds = items.flatMap((item) => item.itemSource === "extra" && item.productId ? [item.productId] : []);
+    if (new Set(extraProductIds).size !== extraProductIds.length)
+      return "This Extra Item has already been added to the current Delivery Order.";
     return "";
   }
   async function submit(saveMode: "invoice-do" | "invoice-only" = "invoice-do") {
@@ -918,6 +1060,8 @@ function DocumentForm({
           <div className="field"><label>Remarks</label><textarea className="input" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>
           {invoice && <div className="field"><label>Title of Invoice</label><input className="input" value={titleOfInvoice} onChange={(e) => setTitleOfInvoice(e.target.value)} /></div>}
         </div>
+        {!invoice && selectedInvoice && <PreviouslyDeliveredItems items={historicalItems} />}
+        {!invoice && selectedInvoice && <div className="current-delivery-heading"><h3>Current Delivery Items</h3><span>Only these editable rows will be saved.</span></div>}
         <div className="items-editor">
           <div className={`edit-row header ${selectedInvoiceId ? "partial-delivery" : ""}`}>
             <div></div>
@@ -950,12 +1094,12 @@ function DocumentForm({
                   placeholder={reference.loading ? "Loading products..." : "Search SKU or model"}
                   value={row.sku}
                   onChange={(e) => chooseProduct(row.id, e.target.value)}
-                  readOnly={!!selectedInvoiceId}
                 />
                 <datalist id={`product-options-${row.id}`}>
                   {reference.products.map((product) => <option key={product.id} value={product.sku}>{product.product_model}</option>)}
                 </datalist>
                 {row.sku && !row.productId && <small className="invalid-help">No matching product found.</small>}
+                {selectedInvoiceId && row.productId && <small className={`item-source ${row.invoiceItemId ? "invoice" : "extra"}`}>{row.invoiceItemId ? "Invoice Item" : "Extra Item"}</small>}
               </div>
               <div>
                 <input className="input" readOnly value={row.model} />
@@ -981,15 +1125,15 @@ function DocumentForm({
                   }
                 />
               </div>
-              {selectedInvoiceId && <div className="delivery-quantity-value">{row.invoiceQuantity || 0}</div>}
+              {selectedInvoiceId && <div className="delivery-quantity-value">{row.invoiceItemId ? row.invoiceQuantity || 0 : "Not in Invoice"}</div>}
               {selectedInvoiceId && <div className="delivery-quantity-value">{row.previouslyDeliveredQuantity || 0}</div>}
-              {selectedInvoiceId && <div className="delivery-quantity-value remaining">{row.remainingQuantity || 0}</div>}
+              {selectedInvoiceId && <div className="delivery-quantity-value remaining">{row.invoiceItemId ? row.remainingQuantity || 0 : "N/A"}</div>}
               <div>
                 <input
                   className="input"
                   type="number"
                   min="1"
-                  max={selectedInvoiceId ? row.remainingQuantity : undefined}
+                  max={selectedInvoiceId && row.invoiceItemId ? row.remainingQuantity : undefined}
                   value={row.quantity}
                   onChange={(e) =>
                     update(row.id, "quantity", Number(e.target.value))
@@ -1034,11 +1178,11 @@ function DocumentForm({
             </div>
           ))}
         </div>
-        {!selectedInvoiceId && <button className="btn mt" onClick={add}>
-          <Plus size={12} /> Add item
-        </button>}
+        <button className="btn mt" onClick={add}>
+          <Plus size={12} /> {invoice ? "Add item" : "Item"}
+        </button>
         {selectedInvoiceId && !items.length && (
-          <div className="status gray mt">This Invoice is Fully Delivered. There is no remaining quantity available.</div>
+          <div className="status gray mt">No new delivery items added.</div>
         )}
         {reference.error && <div className="inline-error">{reference.error}</div>}
         {invoice && (
@@ -1508,6 +1652,12 @@ function RecordModal({
     readOnly = mode === "view";
   const inv = draft as InvoiceRecord,
     delivery = draft as DORecord;
+  const activeModalInvoice = !invoice && delivery.invoiceId
+    ? store.invoices.find((entry) => entry.id === delivery.invoiceId)
+    : undefined;
+  const modalHistoricalItems = activeModalInvoice
+    ? previouslyDeliveredItems(activeModalInvoice, savedDelivery)
+    : [];
   const setField = (field: string, value: unknown) =>
     setDraft(
       (current) => ({ ...current, [field]: value }) as InvoiceRecord | DORecord,
@@ -1539,9 +1689,28 @@ function RecordModal({
     );
   const chooseModalProduct = (id: string, value: string) => {
     const product = reference.products.find((entry) => entry.sku.toLowerCase() === value.trim().toLowerCase());
+    const row = draft.items.find((item) => item.id === id);
+    if (!row) return;
+    const selected = !invoice && activeModalInvoice
+      ? selectDeliveryProduct(row, product, value, activeModalInvoice, draft.items, savedDelivery)
+      : { item: itemFromProduct(row, product, value) };
+    if (selected.error) {
+      store.notify(selected.error);
+      return;
+    }
     setDraft((current) => ({
       ...current,
-      items: current.items.map((item) => item.id === id ? itemFromProduct(item, product, value) : item),
+      items: current.items.map((item) => item.id === id ? selected.item : item),
+    }) as InvoiceRecord | DORecord);
+  };
+  const addModalItem = () => {
+    if (!invoice && draft.items.some((item) => !item.productId)) {
+      store.notify("Complete the current item before adding another item.");
+      return;
+    }
+    setDraft((current) => ({
+      ...current,
+      items: [...current.items, emptyItem()],
     }) as InvoiceRecord | DORecord);
   };
   const clearModalInvoice = () => {
@@ -1606,7 +1775,7 @@ function RecordModal({
       deliveryContact: "",
       deliveryPhone: "",
       itemCollectMethod: selected.itemCollectMethod || "",
-      items: invoiceItemsForDeliveryOrder(selected),
+      items: [],
     }) as DORecord);
   };
   function editValidationError() {
@@ -1617,17 +1786,24 @@ function RecordModal({
     for (let index = 0; index < draft.items.length; index++) {
       const item = draft.items[index];
       if (!reference.products.some((product) => product.id === item.productId && product.sku === item.sku)) return `Item ${index + 1}: Please select a valid SKU.`;
-      if (!invoice && delivery.invoiceId && !item.invoiceItemId)
-        return `Item ${index + 1}: Please select an item from the linked Invoice.`;
       if (item.quantity <= 0) return `Item ${index + 1}: Quantity must be greater than zero.`;
       if (
         !invoice &&
         delivery.invoiceId &&
+        item.invoiceItemId &&
         item.remainingQuantity !== undefined &&
         item.quantity > item.remainingQuantity
       )
-        return `Item ${index + 1}: Current Delivery Quantity cannot exceed the Remaining Quantity of ${item.remainingQuantity}.`;
+        return `Item ${index + 1}: Delivery quantity cannot exceed the remaining quantity of ${item.remainingQuantity}.`;
       if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
+    }
+    if (!invoice) {
+      const invoiceItemIds = draft.items.flatMap((item) => item.invoiceItemId ? [item.invoiceItemId] : []);
+      if (new Set(invoiceItemIds).size !== invoiceItemIds.length)
+        return "This Invoice item has already been added to the current Delivery Order.";
+      const extraProductIds = draft.items.flatMap((item) => item.itemSource === "extra" && item.productId ? [item.productId] : []);
+      if (new Set(extraProductIds).size !== extraProductIds.length)
+        return "This Extra Item has already been added to the current Delivery Order.";
     }
     return "";
   }
@@ -1882,6 +2058,8 @@ function RecordModal({
               })}
             </div>
           )}
+          {!invoice && !readOnly && activeModalInvoice && <PreviouslyDeliveredItems items={modalHistoricalItems} />}
+          {!invoice && !readOnly && activeModalInvoice && <div className="current-delivery-heading"><h3>Current Delivery Items</h3><span>Only these editable rows will be saved.</span></div>}
           <div className="table-wrap mt document-items-table-wrap">
             <table className={`table document-items-table ${!invoice && delivery.invoiceId ? "partial-delivery" : ""}`}>
               <thead>
@@ -1916,10 +2094,8 @@ function RecordModal({
                         onChange={(e) => chooseModalProduct(i.id, e.target.value)}
                       />
                       <datalist id={`edit-product-options-${i.id}`}>{reference.products.map((product) => <option key={product.id} value={product.sku}>{product.product_model}</option>)}</datalist>
+                      {!invoice && delivery.invoiceId && i.productId && <small className={`item-source ${i.invoiceItemId ? "invoice" : "extra"}`}>{i.invoiceItemId ? "Invoice Item" : "Extra Item"}</small>}
                     </td>
-                    {!invoice && delivery.invoiceId && <td><b>{i.invoiceQuantity || 0}</b></td>}
-                    {!invoice && delivery.invoiceId && <td>{i.previouslyDeliveredQuantity || 0}</td>}
-                    {!invoice && delivery.invoiceId && <td><b className="delivery-remaining">{i.remainingQuantity || 0}</b></td>}
                     <td>
                       <input className="input" disabled value={i.model} />
                     </td>
@@ -1944,14 +2120,17 @@ function RecordModal({
                         onChange={(e) =>
                           setItem(i.id, "brand", e.target.value)
                         }
-                      />
-                    </td>
+                        />
+                      </td>
+                    {!invoice && delivery.invoiceId && <td><b>{i.invoiceItemId ? i.invoiceQuantity || 0 : "Not in Invoice"}</b></td>}
+                    {!invoice && delivery.invoiceId && <td>{i.previouslyDeliveredQuantity || 0}</td>}
+                    {!invoice && delivery.invoiceId && <td><b className="delivery-remaining">{i.invoiceItemId ? i.remainingQuantity || 0 : "N/A"}</b></td>}
                     <td>
                       <input
                         className="input"
                         type="number"
                         min="1"
-                        max={!invoice && delivery.invoiceId ? i.remainingQuantity : undefined}
+                        max={!invoice && delivery.invoiceId && i.invoiceItemId ? i.remainingQuantity : undefined}
                         disabled={readOnly}
                         value={i.quantity}
                         onChange={(e) =>
@@ -1992,7 +2171,6 @@ function RecordModal({
                       <td>
                         <button
                           className="btn sm danger"
-                          disabled={draft.items.length === 1}
                           onClick={() =>
                             setDraft(
                               (current) =>
@@ -2014,27 +2192,15 @@ function RecordModal({
               </tbody>
             </table>
           </div>
-          {!readOnly && !(delivery.invoiceId && !invoice) && (
+          {!readOnly && (
             <button
               className="btn mt"
-              onClick={() =>
-                setDraft(
-                  (current) =>
-                    ({
-                      ...current,
-                      items: [
-                        ...current.items,
-                        {
-                          ...emptyItem(),
-                        },
-                      ],
-                    }) as InvoiceRecord | DORecord,
-                )
-              }
+              onClick={addModalItem}
             >
-              <Plus size={12} /> Add item
+              <Plus size={12} /> {invoice ? "Add item" : "Item"}
             </button>
           )}
+          {!invoice && !readOnly && delivery.invoiceId && !draft.items.length && <div className="status gray mt">No new delivery items added.</div>}
           {invoice &&
             (() => {
               const subtotal = inv.items.reduce(

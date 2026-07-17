@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     db
       .from("delivery_orders")
       .select(
-        "id,do_number,delivery_date,customer_id,invoice_id,invoice_number,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,delivery_contact_person,delivery_contact_number,issued_by_user_id,issued_by_display_name,item_collect_method,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,invoice_item_id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
+        "id,do_number,delivery_date,customer_id,invoice_id,invoice_number,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,delivery_contact_person,delivery_contact_number,issued_by_user_id,issued_by_display_name,item_collect_method,contact_person,contact_number,remarks,status,created_at,invoice:invoices(id,invoice_number),customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:delivery_order_items(id,invoice_item_id,item_source,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,remarks)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
@@ -47,10 +47,13 @@ export async function GET(req: NextRequest) {
     attention: row.customer_contact_person || row.customer?.contact_person || "",
     phone: row.customer_contact_number || row.customer?.contact_number || "",
   });
-  const items = (rows: any[] = []) =>
+  const items = (rows: any[] = [], deliveryItems = false) =>
     rows.map((x) => ({
       id: x.id,
       invoiceItemId: x.invoice_item_id || undefined,
+      itemSource: deliveryItems
+        ? x.item_source || (x.invoice_item_id ? "invoice" : "extra")
+        : undefined,
       productId: x.product_id || "",
       model: x.product_model,
       sku: x.sku,
@@ -68,6 +71,7 @@ export async function GET(req: NextRequest) {
       (order: any) => !order.deleted_at && order.status !== "cancelled",
     );
     const deliveredByInvoiceItem = new Map<string, number>();
+    const deliveryOrdersByInvoiceItem = new Map<string, Set<string>>();
     related.forEach((order: any) =>
       (order.items || []).forEach((item: any) => {
         if (!item.invoice_item_id) return;
@@ -75,6 +79,9 @@ export async function GET(req: NextRequest) {
           item.invoice_item_id,
           (deliveredByInvoiceItem.get(item.invoice_item_id) || 0) + Number(item.quantity),
         );
+        const numbers = deliveryOrdersByInvoiceItem.get(item.invoice_item_id) || new Set<string>();
+        numbers.add(order.do_number);
+        deliveryOrdersByInvoiceItem.set(item.invoice_item_id, numbers);
       }),
     );
     const invoiceItems = items(x.items).map((item: any) => ({
@@ -85,6 +92,7 @@ export async function GET(req: NextRequest) {
         0,
         item.quantity - (deliveredByInvoiceItem.get(item.id) || 0),
       ),
+      relatedDeliveryOrderNumbers: Array.from(deliveryOrdersByInvoiceItem.get(item.id) || []),
     }));
     const deliveredQuantity = invoiceItems.reduce(
       (sum: number, item: any) => sum + item.previouslyDeliveredQuantity,
@@ -149,7 +157,7 @@ export async function GET(req: NextRequest) {
     deliveryContact: x.delivery_contact_person || "",
     deliveryPhone: x.delivery_contact_number || "",
     itemCollectMethod: x.item_collect_method || "",
-    items: items(x.items),
+    items: items(x.items, true),
     status: String(x.status)
       .replaceAll("_", " ")
       .replace(/\b\w/g, (c: string) => c.toUpperCase()),
@@ -183,7 +191,7 @@ export async function POST(req: NextRequest) {
       ? "create_invoice_with_do_v9"
       : body.type === "invoice_only"
         ? "create_invoice_only_v8"
-        : "create_delivery_order_only_v8";
+        : "create_delivery_order_only_v9";
   const payload = {
     ...body,
     issuedByUserId: auth.session.userId,
@@ -208,7 +216,7 @@ export async function PATCH(req: NextRequest) {
     body.type === "invoice"
       ? "update_invoice_document_v8"
       : body.type === "delivery_order"
-        ? "update_delivery_order_document_v8"
+        ? "update_delivery_order_document_v9"
         : null;
   if (!fn)
     return NextResponse.json(

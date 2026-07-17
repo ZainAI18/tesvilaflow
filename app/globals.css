@@ -603,6 +603,25 @@ textarea.input {
 }
 .delivery-quantity-value.remaining { color: var(--tesvila-blue); }
 .delivery-remaining { color: var(--tesvila-blue); }
+.previously-delivered-section {
+  margin: 18px 0 12px;
+  padding: 12px;
+  border: 1px solid #cfd5da;
+  border-radius: 9px;
+  background: #eef0f2;
+}
+.previously-delivered-section h3,
+.current-delivery-heading h3 { margin: 0; font-size: 13px; }
+.previously-delivered-table { min-width: 900px; margin-top: 10px; background: #e4e7ea; }
+.previously-delivered-table th { background: #7a838c; color: white; }
+.previously-delivered-table td { background: #eceeef; color: #343a40; }
+.previously-delivered-table small { display: block; margin-top: 3px; color: #697078; }
+.previously-delivered-empty { margin-top: 10px; padding: 12px; color: var(--muted); background: #e4e7ea; border-radius: 7px; }
+.current-delivery-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 16px 0 8px; }
+.current-delivery-heading span { color: var(--muted); font-size: 10px; }
+.item-source { display: block; margin-top: 4px; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.item-source.invoice { color: var(--tesvila-blue); }
+.item-source.extra { color: #9a5b00; }
 .related-delivery-orders {
   border: 1px solid var(--line);
   border-radius: 9px;
