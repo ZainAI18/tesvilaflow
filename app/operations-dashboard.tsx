@@ -65,6 +65,36 @@ type OperationsData = {
   start: string;
   end: string;
 };
+type SalesReportData = {
+  availableMonths: string[];
+  products: Array<{
+    id: string;
+    sku: string;
+    product_model: string;
+    description: string;
+  }>;
+  customers: Array<{ key: string; company_name: string }>;
+  summary: {
+    invoices: number;
+    salesAmount: number;
+    discount: number;
+    cost: number;
+    grossProfit: number;
+    margin: number;
+  };
+  invoices: Array<{
+    id: string;
+    invoice_number: string;
+    invoice_date: string;
+    customer_company: string;
+    items: string[];
+    sales: number;
+    cost: number;
+    gross_profit: number;
+    status: string;
+  }>;
+  details: unknown[];
+};
 
 const money = (n: number) =>
   new Intl.NumberFormat("en-SG", { style: "currency", currency: "SGD" }).format(
@@ -556,197 +586,304 @@ export function StockMovementHistory() {
   );
 }
 
+function monthName(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-SG", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function ReportSearchFilter({
+  label,
+  allLabel,
+  listId,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  listId: string;
+  value: string;
+  options: Array<{ key: string; label: string }>;
+  onChange: (key: string) => void;
+}) {
+  const selectedLabel =
+    value === "all"
+      ? allLabel
+      : options.find((option) => option.key === value)?.label || "";
+  const [text, setText] = useState(selectedLabel);
+  return (
+    <div className="field">
+      <label>{label}</label>
+      <input
+        className="input"
+        list={listId}
+        value={text}
+        placeholder={allLabel}
+        onChange={(event) => {
+          const next = event.target.value;
+          setText(next);
+          if (!next || next === allLabel) onChange("all");
+          const match = options.find((option) => option.label === next);
+          if (match) onChange(match.key);
+        }}
+        onBlur={() => {
+          if (!options.some((option) => option.label === text) && text !== allLabel)
+            setText(selectedLabel);
+        }}
+      />
+      <datalist id={listId}>
+        <option value={allLabel} />
+        {options.map((option) => (
+          <option key={option.key} value={option.label} />
+        ))}
+      </datalist>
+    </div>
+  );
+}
+
 export function SalesReport() {
-  const now = new Date(),
-    [month, setMonth] = useState(
-      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
-    ),
-    [start, setStart] = useState(`${month}-01`),
-    [end, setEnd] = useState(
-      new Date(now.getFullYear(), now.getMonth() + 1, 0)
-        .toISOString()
-        .slice(0, 10),
-    );
-  const { data, error, loading, load } = useOperations(start, end);
-  const [productId, setProductId] = useState("all"),
-    [customer, setCustomer] = useState("all");
-  function changeMonth(v: string) {
-    setMonth(v);
-    const [y, m] = v.split("-").map(Number);
-    setStart(`${v}-01`);
-    setEnd(new Date(y, m, 0).toISOString().slice(0, 10));
-  }
-  const invoices = (data?.invoices || [])
-    .map((i) => {
-      const items = i.items.filter(
-        (x) => productId === "all" || x.product?.id === productId,
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const [month, setMonth] = useState(currentMonth);
+  const [start, setStart] = useState(`${currentMonth}-01`);
+  const [end, setEnd] = useState(
+    new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      .toISOString()
+      .slice(0, 10),
+  );
+  const [productId, setProductId] = useState("all");
+  const [customerKey, setCustomerKey] = useState("all");
+  const [data, setData] = useState<SalesReportData | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const query = useCallback(
+    () => new URLSearchParams({ start, end, productId, customerKey }),
+    [start, end, productId, customerKey],
+  );
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await authFetch(`/api/sales-report?${query()}`);
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(body.error || "Unable to load sales report.");
+      setData(body);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load sales report.",
       );
-      const sales = items.reduce(
-          (s, x) =>
-            s +
-            Number(x.quantity) * Number(x.unit_price) -
-            Number(x.discount_amount || 0),
-          0,
-        ),
-        cost = items.reduce(
-          (s, x) => s + Number(x.quantity) * Number(x.unit_cost || 0),
-          0,
-        );
-      return {
-        ...i,
-        items,
-        net_sales: sales,
-        cost,
-        gross_profit: sales - cost,
-      };
-    })
-    .filter(
-      (i) =>
-        i.items.length &&
-        (customer === "all" || i.customer?.company_name === customer),
-    );
-  const totalSales = invoices.reduce((s, i) => s + i.net_sales, 0),
-    totalCost = invoices.reduce((s, i) => s + i.cost, 0),
-    profit = totalSales - totalCost,
-    discount = invoices.reduce(
-      (s, i) =>
-        s + i.items.reduce((a, x) => a + Number(x.discount_amount || 0), 0),
-      0,
-    );
-  const customers = Array.from(
-    new Set(
-      (data?.invoices || [])
-        .map((i) => i.customer?.company_name)
-        .filter(Boolean),
-    ),
-  ) as string[];
+    } finally {
+      setLoading(false);
+    }
+  }, [query]);
+  useEffect(() => {
+    // Filter changes intentionally refresh the server-calculated report.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
+
+  function changeMonth(value: string) {
+    if (!value) return;
+    setMonth(value);
+    const [year, monthNumber] = value.split("-").map(Number);
+    setStart(`${value}-01`);
+    setEnd(new Date(year, monthNumber, 0).toISOString().slice(0, 10));
+  }
+
+  async function exportReport() {
+    if (!data?.details.length || exporting) return;
+    setExporting(true);
+    setExportError("");
+    try {
+      const response = await authFetch(`/api/sales-report/export?${query()}`);
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.error || "Excel export failed.");
+      }
+      const disposition = response.headers.get("content-disposition") || "";
+      const filename =
+        disposition.match(/filename="([^"]+)"/)?.[1] ||
+        "TESVILA_Monthly_Sales_Report.xlsx";
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setExportError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Excel export failed.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const summary = data?.summary || {
+    invoices: 0,
+    salesAmount: 0,
+    discount: 0,
+    cost: 0,
+    grossProfit: 0,
+    margin: 0,
+  };
+  const productOptions = (data?.products || []).map((product) => ({
+    key: product.id,
+    label: [product.sku, product.product_model, product.description]
+      .filter(Boolean)
+      .join(" — "),
+  }));
+  const customerOptions = (data?.customers || []).map((customer) => ({
+    key: customer.key,
+    label: customer.company_name,
+  }));
+
   return (
     <>
       <div className="page-head row between">
         <div>
           <h2>Monthly Sales Report</h2>
           <p>
-            Calculated only from saved, non-void invoices using each line’s cost
-            snapshot.
+            Calculated only from saved, non-void invoices using each line&apos;s
+            cost snapshot.
           </p>
         </div>
         <div className="row">
-          <button className="btn" onClick={load}>
+          <button className="btn" onClick={load} disabled={loading}>
             <RefreshCw size={13} /> Refresh
           </button>
           <button
             className="btn"
-            onClick={() =>
-              exportXlsx(
-                "monthly-sales-report.xlsx",
-                invoices.map((i) => ({
-                  Invoice: i.invoice_number,
-                  Date: i.invoice_date,
-                  Customer: i.customer?.company_name,
-                  Sales: i.net_sales,
-                  Cost: i.cost,
-                  GrossProfit: i.gross_profit,
-                  Status: i.status,
-                })),
-              )
-            }
+            onClick={exportReport}
+            disabled={exporting || loading || !data?.details.length}
           >
-            <Download size={13} /> Export
+            <Download size={13} /> {exporting ? "Exporting..." : "Export"}
           </button>
         </div>
       </div>
+      {exportError && <div className="notice error">{exportError}</div>}
       <div className="card pad filters mb">
-        <input
-          className="input"
-          type="month"
-          value={month}
-          onChange={(e) => changeMonth(e.target.value)}
-        />
-        <input
-          className="input"
-          type="date"
-          value={start}
-          onChange={(e) => setStart(e.target.value)}
-        />
-        <input
-          className="input"
-          type="date"
-          value={end}
-          onChange={(e) => setEnd(e.target.value)}
-        />
-        <select
-          className="input"
+        <div className="field">
+          <label>Month</label>
+          <select
+            className="input"
+            value={month}
+            onChange={(event) => changeMonth(event.target.value)}
+          >
+            {month === "" && <option value="">Custom date range</option>}
+            {(data?.availableMonths || [month])
+              .filter(Boolean)
+              .map((value) => (
+                <option value={value} key={value}>
+                  {monthName(value)}
+                </option>
+              ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Start Date</label>
+          <input
+            className="input"
+            type="date"
+            value={start}
+            onChange={(event) => {
+              setMonth("");
+              setStart(event.target.value);
+            }}
+          />
+        </div>
+        <div className="field">
+          <label>End Date</label>
+          <input
+            className="input"
+            type="date"
+            value={end}
+            onChange={(event) => {
+              setMonth("");
+              setEnd(event.target.value);
+            }}
+          />
+        </div>
+        <ReportSearchFilter
+          key={`product-${productId}-${productOptions.length}`}
+          label="Product"
+          allLabel="All Products"
+          listId="sales-report-products"
           value={productId}
-          onChange={(e) => setProductId(e.target.value)}
-        >
-          <option value="all">All products</option>
-          {data?.products.map((p) => (
-            <option value={p.id} key={p.id}>
-              {p.sku} · {p.product_model}
-            </option>
-          ))}
-        </select>
-        <select
-          className="input"
-          value={customer}
-          onChange={(e) => setCustomer(e.target.value)}
-        >
-          <option value="all">All customers</option>
-          {customers.map((x) => (
-            <option key={x}>{x}</option>
-          ))}
-        </select>
+          options={productOptions}
+          onChange={setProductId}
+        />
+        <ReportSearchFilter
+          key={`customer-${customerKey}-${customerOptions.length}`}
+          label="Customer"
+          allLabel="All Customers"
+          listId="sales-report-customers"
+          value={customerKey}
+          options={customerOptions}
+          onChange={setCustomerKey}
+        />
       </div>
       <State loading={loading} error={error} />
       {data && (
         <>
           <div className="grid-4 mb">
-            <Metric label="Invoices" value={String(invoices.length)} />
-            <Metric label="Sales amount" value={money(totalSales)} />
-            <Metric label="Discount" value={money(discount)} />
-            <Metric label="Cost" value={money(totalCost)} />
-            <Metric label="Gross profit" value={money(profit)} />
-            <Metric
-              label="Margin"
-              value={`${totalSales ? ((profit / totalSales) * 100).toFixed(1) : "0.0"}%`}
-            />
+            <Metric label="Invoices" value={String(summary.invoices)} />
+            <Metric label="Sales amount" value={money(summary.salesAmount)} />
+            <Metric label="Discount" value={money(summary.discount)} />
+            <Metric label="Cost" value={money(summary.cost)} />
+            <Metric label="Gross profit" value={money(summary.grossProfit)} />
+            <Metric label="Margin" value={`${(summary.margin * 100).toFixed(1)}%`} />
           </div>
-          <div className="card table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Invoice</th>
-                  <th>Date</th>
-                  <th>Customer</th>
-                  <th>Items</th>
-                  <th>Sales</th>
-                  <th>Cost</th>
-                  <th>Gross profit</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((i) => (
-                  <tr key={i.id}>
-                    <td>
-                      <b>{i.invoice_number}</b>
-                    </td>
-                    <td>{i.invoice_date}</td>
-                    <td>{i.customer?.company_name}</td>
-                    <td>{i.items.map((x) => x.product?.sku).join(", ")}</td>
-                    <td>{money(i.net_sales)}</td>
-                    <td>{money(i.cost)}</td>
-                    <td>
-                      <b>{money(i.gross_profit)}</b>
-                    </td>
-                    <td>
-                      <span className="status">{title(i.status)}</span>
-                    </td>
+          {!data.invoices.length && (
+            <div className="card empty">
+              No sales records found for the selected filters.
+            </div>
+          )}
+          {!!data.invoices.length && (
+            <div className="card table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Invoice</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Items</th>
+                    <th>Sales</th>
+                    <th>Cost</th>
+                    <th>Gross profit</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.invoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <td><b>{invoice.invoice_number}</b></td>
+                      <td>{invoice.invoice_date}</td>
+                      <td>{invoice.customer_company}</td>
+                      <td>{invoice.items.join(", ")}</td>
+                      <td>{money(invoice.sales)}</td>
+                      <td>{money(invoice.cost)}</td>
+                      <td><b>{money(invoice.gross_profit)}</b></td>
+                      <td><span className="status">{title(invoice.status)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </>

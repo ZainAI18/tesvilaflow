@@ -450,3 +450,33 @@ test("Parent SKUs map Invoice items to independent Child inventory without combi
   assert.doesNotMatch(parentMigration, /update public\.products[\s\S]*current_stock/);
   assert.match(inventoryMigration, /where id=i\.product_id/);
 });
+
+test("Monthly Sales Report combines item-level filters with a formatted XLSX export", async () => {
+  const [page, route, exportRoute, reportLogic, workbook] = await Promise.all([
+    read("app/operations-dashboard.tsx"),
+    read("app/api/sales-report/route.ts"),
+    read("app/api/sales-report/export/route.ts"),
+    read("lib/sales-report.ts"),
+    read("lib/sales-report-workbook.ts"),
+  ]);
+
+  assert.match(page, /ReportSearchFilter/);
+  assert.match(page, /Custom date range/);
+  assert.match(page, /Exporting\.\.\./);
+  assert.match(page, /No sales records found for the selected filters\./);
+  assert.match(page, /\/api\/sales-report\/export/);
+  assert.match(route, /loadSalesReport/);
+  assert.match(exportRoute, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(reportLogic, /filters\.productId !== "all" && productId !== filters\.productId/);
+  assert.match(reportLogic, /quantity \* unitPrice - discount/);
+  assert.match(reportLogic, /savedCost === null \|\| savedCost === undefined/);
+  assert.match(reportLogic, /summary\.margin =/);
+  assert.match(workbook, /addWorksheet\("Summary"/);
+  assert.match(workbook, /addWorksheet\("Sales Details"/);
+  assert.match(workbook, /state: "frozen", ySplit: 1/);
+  assert.match(workbook, /detailSheet\.autoFilter/);
+  assert.match(workbook, /"S\$" #,##0\.00/);
+  assert.match(workbook, /Gross Profit Margin/);
+  assert.match(workbook, /TESVILA_Monthly_Sales_Report_/);
+  assert.match(workbook, /TESVILA_Sales_Report_/);
+});
