@@ -579,10 +579,7 @@ textarea.input {
   overflow: auto;
 }
 .document-items-table { min-width: 900px; table-layout: fixed; }
-.document-items-table.delivery-order { min-width: 900px; }
-.document-items-table.delivery-order th:nth-child(4) { width: 32%; }
-.document-items-table.delivery-order th:nth-child(5),
-.document-items-table.delivery-order th:nth-child(6) { width: 11%; }
+.document-items-table.partial-delivery { min-width: 1200px; }
 .document-items-table th,
 .document-items-table td,
 .table th,
@@ -594,9 +591,9 @@ textarea.input {
   border-top: 1px solid var(--line);
   align-items: center;
 }
-.edit-row.delivery-order {
-  grid-template-columns: 34px 1fr 1fr .8fr 2fr 85px 105px 60px;
-  min-width: 900px;
+.edit-row.partial-delivery {
+  grid-template-columns: 34px .9fr 1fr 1fr 1.5fr 76px 92px 76px 96px 90px 80px 90px 60px;
+  min-width: 1330px;
 }
 .delivery-quantity-value {
   color: var(--muted);
@@ -604,7 +601,22 @@ textarea.input {
   font-weight: 700;
   text-align: center;
 }
+.delivery-quantity-value.remaining { color: var(--tesvila-blue); }
+.delivery-remaining { color: var(--tesvila-blue); }
+.previously-delivered-section {
+  margin: 18px 0 12px;
+  padding: 12px;
+  border: 1px solid #cfd5da;
+  border-radius: 9px;
+  background: #eef0f2;
+}
+.previously-delivered-section h3,
 .current-delivery-heading h3 { margin: 0; font-size: 13px; }
+.previously-delivered-table { min-width: 900px; margin-top: 10px; background: #e4e7ea; }
+.previously-delivered-table th { background: #7a838c; color: white; }
+.previously-delivered-table td { background: #eceeef; color: #343a40; }
+.previously-delivered-table small { display: block; margin-top: 3px; color: #697078; }
+.previously-delivered-empty { margin-top: 10px; padding: 12px; color: var(--muted); background: #e4e7ea; border-radius: 7px; }
 .current-delivery-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 16px 0 8px; }
 .current-delivery-heading span { color: var(--muted); font-size: 10px; }
 .item-source { display: block; margin-top: 4px; font-size: 8px; font-weight: 800; text-transform: uppercase; }
