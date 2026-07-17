@@ -355,9 +355,10 @@ test("Delivery Order terms and signatures stay in a static final-page footer", a
   assert.match(workflow, /y - dynamicFooterHeight < DELIVERY_ORDER_STATIC_FOOTER_TOP \+ 12/);
   assert.match(workflow, /drawDeliveryOrderStaticFooter\(kit, page, order\)/);
   assert.match(workflow, /Driver \/ Delivery Personnel/);
+  assert.match(workflow, /Goods Checked & Received In Good Condition/);
   assert.match(workflow, /Customer Signature/);
-  assert.match(workflow, /CUSTOMER STAMP/);
   assert.match(workflow, /Received Date:/);
+  assert.doesNotMatch(workflow, /CUSTOMER STAMP|Customer Signature & Stamp|Company Stamp/);
 });
 
 test("Delivery Order PDF uses the Invoice blue theme and Invoice title is editable and persisted", async () => {
