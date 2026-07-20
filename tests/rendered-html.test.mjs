@@ -683,3 +683,32 @@ test("Inventory Stock supports accurate monthly balances and a formatted stock-l
   assert.match(workbook, /fitToWidth: 1/);
   assert.match(workbook, /Tesvila_Stock_List_/);
 });
+
+test("Invoice discounts use percentage input while Supabase keeps discount amounts", async () => {
+  const [workflow, documentsApi, discount, report, css, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/api/documents/route.ts"),
+    read("lib/invoice-discount.ts"),
+    read("lib/invoice-report.ts"),
+    read("app/globals.css"),
+    read("lib/supabase-server.ts"),
+  ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(workflow, /aria-label="Discount percentage"/);
+  assert.match(workflow, /max="100"/);
+  assert.match(workflow, /step="0\.01"/);
+  assert.match(workflow, /formatDiscountPercent/);
+  assert.match(workflow, /invoiceItemLineAmount/);
+  assert.match(workflow, /Discount must be between 0% and 100%/);
+  assert.match(discount, /roundTo\(percent, 2\)/);
+  assert.match(discount, /lineSubtotal \* Number\(discountPercent\) \/ 100/);
+  assert.match(discount, /discountPercentFromAmount/);
+  assert.match(discount, /withDiscountAmounts/);
+  assert.match(documentsApi, /items\(x\.items, false, true\)/);
+  assert.match(documentsApi, /withDiscountAmounts\(clientPayload\)/);
+  assert.match(documentsApi, /withDiscountAmounts\(body\.record\)/);
+  assert.match(report, /invoiceItemLineAmount/);
+  assert.match(css, /\.percentage-input/);
+  assert.doesNotMatch(documentsApi, /discount_percent/);
+});

@@ -2,6 +2,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth-session";
 import { createServerDatabase } from "@/lib/supabase-server";
+import {
+  discountPercentFromAmount,
+  withDiscountAmounts,
+} from "@/lib/invoice-discount";
 
 function database() {
   return createServerDatabase();
@@ -83,7 +87,11 @@ export async function GET(req: NextRequest) {
     attention: row.customer_contact_person || row.customer?.contact_person || "",
     phone: row.customer_contact_number || row.customer?.contact_number || "",
   });
-  const items = (rows: any[] = [], deliveryItems = false) =>
+  const items = (
+    rows: any[] = [],
+    deliveryItems = false,
+    invoiceDiscounts = false,
+  ) =>
     rows.map((x) => ({
       id: x.id,
       invoiceItemId: x.invoice_item_id || undefined,
@@ -99,7 +107,16 @@ export async function GET(req: NextRequest) {
       quantity: Number(x.quantity),
       unitPrice: Number(x.unit_price),
       unitCost: Number(x.unit_cost || 0),
-      discount: Number(x.discount_amount || 0),
+      discount: invoiceDiscounts
+        ? discountPercentFromAmount(
+            Number(x.quantity),
+            Number(x.unit_price),
+            Number(x.discount_amount || 0),
+          )
+        : 0,
+      discountAmount: invoiceDiscounts ? Number(x.discount_amount || 0) : undefined,
+      discountBasisQuantity: invoiceDiscounts ? Number(x.quantity) : undefined,
+      discountBasisUnitPrice: invoiceDiscounts ? Number(x.unit_price) : undefined,
       remarks: x.remarks || "",
     }));
   const invoices = (invoiceRows || []).map((x: any) => {
@@ -120,7 +137,7 @@ export async function GET(req: NextRequest) {
         deliveryOrdersByInvoiceItem.set(item.invoice_item_id, numbers);
       }),
     );
-    const invoiceItems = items(x.items).map((item: any) => ({
+    const invoiceItems = items(x.items, false, true).map((item: any) => ({
       ...item,
       invoiceQuantity: item.quantity,
       previouslyDeliveredQuantity: deliveredByInvoiceItem.get(item.id) || 0,
@@ -245,11 +262,22 @@ export async function POST(req: NextRequest) {
       : body.type === "invoice_only"
         ? "create_invoice_only_v8"
         : "create_delivery_order_only_v10";
-  const payload = {
+  const clientPayload = {
     ...body,
     issuedByUserId: auth.session.userId,
     issuedByDisplayName: auth.session.displayName,
   };
+  let payload = clientPayload;
+  if (body.type === "invoice_with_do" || body.type === "invoice_only") {
+    try {
+      payload = withDiscountAmounts(clientPayload);
+    } catch (discountError) {
+      return NextResponse.json(
+        { error: discountError instanceof Error ? discountError.message : "Invalid Invoice discount." },
+        { status: 400 },
+      );
+    }
+  }
   const { data, error } = await db.rpc(fn, { p_payload: payload });
   if (error)
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -292,10 +320,21 @@ export async function PATCH(req: NextRequest) {
       { error: "Unknown document type" },
       { status: 400 },
     );
+  let record = body.record;
+  if (body.type === "invoice") {
+    try {
+      record = withDiscountAmounts(body.record);
+    } catch (discountError) {
+      return NextResponse.json(
+        { error: discountError instanceof Error ? discountError.message : "Invalid Invoice discount." },
+        { status: 400 },
+      );
+    }
+  }
   const { error } = await db.rpc(fn, {
     p_id: body.record.id,
     p_payload: {
-      ...body.record,
+      ...record,
       updatedByUserId: auth.session.userId,
       updatedByDisplayName: auth.session.displayName,
     },
