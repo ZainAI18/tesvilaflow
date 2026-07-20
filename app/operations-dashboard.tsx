@@ -78,6 +78,17 @@ type OperationsData = {
   start: string;
   end: string;
 };
+type InventoryStockData = {
+  periodKey: string;
+  periodLabel: string;
+  isCurrentMonth: boolean;
+  availableMonths: string[];
+  asOfLabel: string;
+  latestDo: { number: string; date: string; displayDate: string } | null;
+  dateUpdated: string;
+  products: Product[];
+  movements: Movement[];
+};
 type SalesReportData = {
   availableMonths: string[];
   products: Array<{
@@ -157,6 +168,43 @@ function useOperations(start?: string, end?: string) {
   }, [load]);
   return { data, error, loading, load };
 }
+function useInventoryStock(period: string) {
+  const [data, setData] = useState<InventoryStockData | null>(null),
+    [error, setError] = useState(""),
+    [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const query = new URLSearchParams();
+      if (period) query.set("period", period);
+      const response = await authFetch(`/api/inventory-stock?${query}`);
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(body.error || "Unable to load Inventory Stock.");
+      setData(body);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load Inventory Stock.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [period]);
+  useEffect(() => {
+    // Month changes intentionally refresh server-reconstructed stock balances.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
+  useEffect(() => {
+    const refetch = () => void load();
+    window.addEventListener("focus", refetch);
+    return () => window.removeEventListener("focus", refetch);
+  }, [load]);
+  return { data, error, loading, load };
+}
 function State({ loading, error }: { loading: boolean; error: string }) {
   if (loading)
     return <div className="card empty">Loading live Supabase data…</div>;
@@ -177,9 +225,12 @@ export function InventoryOperations({
 }: {
   notify: (s: string) => void;
 }) {
-  const { data, error, loading, load } = useOperations();
+  const [period, setPeriod] = useState("");
+  const { data, error, loading, load } = useInventoryStock(period);
   const [productId, setProductId] = useState("all"),
-    [show, setShow] = useState(false);
+    [show, setShow] = useState(false),
+    [exporting, setExporting] = useState(false),
+    [exportError, setExportError] = useState("");
   const products = data?.products || [],
     movements = data?.movements || [];
   const selected =
@@ -208,29 +259,88 @@ export function InventoryOperations({
     damaged = sum("damaged"),
     delivered = sum("outgoing");
   const computed = opening + incoming + returned - damaged - delivered;
+  const selectedPeriod =
+    period && data?.availableMonths.includes(period)
+      ? period
+      : data?.periodKey || period;
+
+  async function exportStockList() {
+    if (!selectedPeriod || exporting) return;
+    setExporting(true);
+    setExportError("");
+    try {
+      const query = new URLSearchParams({ period: selectedPeriod });
+      const response = await authFetch(`/api/inventory-stock/export?${query}`);
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.error || "Stock List export failed.");
+      }
+      const disposition = response.headers.get("content-disposition") || "";
+      const filename =
+        disposition.match(/filename="([^"]+)"/)?.[1] ||
+        `Tesvila_Stock_List_${selectedPeriod}.xlsx`;
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setExportError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Stock List export failed.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <div className="page-head row between">
         <div>
           <h2>Inventory Stock</h2>
-          <p>
-            Live balances calculated from opening stock and immutable movement
-            history.
-          </p>
+          <p>{data?.asOfLabel || "Stock balances from Supabase movement history."}</p>
         </div>
         <div className="row">
           <button className="btn" onClick={load}>
             <RefreshCw size={13} /> Refresh
+          </button>
+          <button
+            className="btn"
+            onClick={exportStockList}
+            disabled={exporting || loading || !selectedPeriod}
+          >
+            <Download size={13} />
+            {exporting ? "Generating..." : "Export Stock List"}
           </button>
           <button className="btn primary" onClick={() => setShow(true)}>
             <Plus size={13} /> Record movement
           </button>
         </div>
       </div>
+      {exportError && <div className="notice error">{exportError}</div>}
       <State loading={loading} error={error} />
       {data && (
         <>
-          <div className="card pad mb">
+          <div className="card pad filters mb">
+            <div className="field">
+              <label>Month / Year</label>
+              <select
+                className="input"
+                value={selectedPeriod}
+                onChange={(event) => setPeriod(event.target.value)}
+              >
+                {(data.availableMonths || []).map((value) => (
+                  <option value={value} key={value}>
+                    {monthName(value)}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="field">
               <label>Product view</label>
               <select
@@ -249,8 +359,11 @@ export function InventoryOperations({
           </div>
           <div className="grid-4 mb">
             <Metric label="Total products" value={String(selected.length)} />
-            <Metric label="Opening stock" value={number(opening)} />
-            <Metric label="Current stock" value={number(current)} />
+            <Metric label={`Opening stock — ${data.periodLabel}`} value={number(opening)} />
+            <Metric
+              label={data.isCurrentMonth ? "Current stock" : "Month-end stock"}
+              value={number(current)}
+            />
             <Metric label="Incoming" value={number(incoming)} />
             <Metric label="Damaged" value={number(damaged)} />
             <Metric label="Returned" value={number(returned)} />
@@ -273,7 +386,7 @@ export function InventoryOperations({
                   <th>Product</th>
                   <th>Stock Owner</th>
                   <th>Opening</th>
-                  <th>Current</th>
+                  <th>{data.isCurrentMonth ? "Current" : "Month End"}</th>
                   <th>Reserved</th>
                   <th>Available</th>
                   <th>Minimum</th>
@@ -306,12 +419,18 @@ export function InventoryOperations({
                     <td>
                       <b>{number(p.effective_current_stock)}</b>
                     </td>
-                    <td>{number(p.effective_reserved_stock)}</td>
                     <td>
-                      {number(
-                        Number(p.effective_current_stock) -
-                          Number(p.effective_reserved_stock),
-                      )}
+                      {data.isCurrentMonth
+                        ? number(p.effective_reserved_stock)
+                        : "—"}
+                    </td>
+                    <td>
+                      {data.isCurrentMonth
+                        ? number(
+                            Number(p.effective_current_stock) -
+                              Number(p.effective_reserved_stock),
+                          )
+                        : "—"}
                     </td>
                     <td>{number(p.effective_minimum_stock)}</td>
                   </tr>

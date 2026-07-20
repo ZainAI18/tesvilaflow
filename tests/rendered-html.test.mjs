@@ -650,3 +650,36 @@ test("Monthly Sales Report combines item-level filters with a formatted XLSX exp
   assert.match(workbook, /TESVILA_Monthly_Sales_Report_/);
   assert.match(workbook, /TESVILA_Sales_Report_/);
 });
+
+test("Inventory Stock supports accurate monthly balances and a formatted stock-list workbook", async () => {
+  const [page, route, exportRoute, report, workbook, database] = await Promise.all([
+    read("app/operations-dashboard.tsx"),
+    read("app/api/inventory-stock/route.ts"),
+    read("app/api/inventory-stock/export/route.ts"),
+    read("lib/stock-list-report.ts"),
+    read("lib/stock-list-workbook.ts"),
+    read("lib/supabase-server.ts"),
+  ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(page, /Month \/ Year/);
+  assert.match(page, /Export Stock List/);
+  assert.match(page, /Generating\.\.\./);
+  assert.match(page, /Month-end stock/);
+  assert.match(route, /loadStockListReport/);
+  assert.match(exportRoute, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(report, /liveStock - \(movementNetAfter\.get\(ownerId\) \|\| 0\)/);
+  assert.match(report, /effectiveMovementDate/);
+  assert.match(report, /delivery_date/);
+  assert.match(report, /!product\.linked_stock_product_id/);
+  assert.match(report, /!parentIds\.has\(product\.id\)/);
+  assert.match(report, /"delivery", "concrete lining", "concret lining"/);
+  assert.match(report, /sortProductsByCodeAfterFirstT/);
+  assert.match(workbook, /Logo original remove background\.png/);
+  assert.match(workbook, /Tesvila Stock List/);
+  assert.match(workbook, /Math\.ceil\(total \/ 2\)/);
+  assert.match(workbook, /Attn : Dealers \* Some models which are not shown/);
+  assert.match(workbook, /paperSize: 9/);
+  assert.match(workbook, /fitToWidth: 1/);
+  assert.match(workbook, /Tesvila_Stock_List_/);
+});
