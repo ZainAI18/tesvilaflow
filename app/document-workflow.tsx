@@ -2130,13 +2130,14 @@ function RecordModal({
           {!invoice && !readOnly && activeModalInvoice && <PreviouslyDeliveredItems items={modalHistoricalItems} />}
           {!invoice && !readOnly && activeModalInvoice && <div className="current-delivery-heading"><h3>Current Delivery Items</h3><span>Only these editable rows will be saved.</span></div>}
           <div className="table-wrap mt document-items-table-wrap">
-            <table className={`table document-items-table ${!invoice && delivery.invoiceId ? "partial-delivery" : ""}`}>
+            <table className={`table document-items-table ${!invoice ? "delivery-view-items" : ""} ${!invoice && delivery.invoiceId ? "partial-delivery" : ""}`}>
               <thead>
                 <tr>
                   <th>SKU</th>
                   <th>Product Model</th>
                   <th>Product Type</th>
                   <th>Description</th>
+                  {!invoice && <th>Brand</th>}
                   {!invoice && delivery.invoiceId ? (
                     <>
                       <th>Invoice Qty</th>
@@ -2180,17 +2181,32 @@ function RecordModal({
                           setItem(i.id, "description", e.target.value)
                         }
                       />
-                      <input
-                        className="input"
-                        style={{ marginTop: 4 }}
-                        disabled={readOnly}
-                        value={i.brand}
-                        placeholder="Brand"
-                        onChange={(e) =>
-                          setItem(i.id, "brand", e.target.value)
-                        }
+                      {invoice && (
+                        <input
+                          className="input"
+                          style={{ marginTop: 4 }}
+                          disabled={readOnly}
+                          value={i.brand}
+                          placeholder="Brand"
+                          onChange={(e) =>
+                            setItem(i.id, "brand", e.target.value)
+                          }
+                        />
+                      )}
+                      </td>
+                    {!invoice && (
+                      <td>
+                        <input
+                          className="input"
+                          disabled={readOnly}
+                          value={i.brand}
+                          placeholder="Brand"
+                          onChange={(e) =>
+                            setItem(i.id, "brand", e.target.value)
+                          }
                         />
                       </td>
+                    )}
                     {!invoice && delivery.invoiceId && <td><b>{i.invoiceItemId ? i.invoiceQuantity || 0 : "Not in Invoice"}</b></td>}
                     {!invoice && delivery.invoiceId && <td>{i.previouslyDeliveredQuantity || 0}</td>}
                     {!invoice && delivery.invoiceId && <td><b className="delivery-remaining">{i.invoiceItemId ? i.remainingQuantity || 0 : "N/A"}</b></td>}
@@ -2233,7 +2249,7 @@ function RecordModal({
                         />
                       </td>
                     )}
-                    <td>
+                    <td className="document-item-amount">
                       <b>{fmt(i.quantity * i.unitPrice - (i.discount || 0))}</b>
                     </td>
                     {!readOnly && (
