@@ -931,9 +931,11 @@ textarea.input {
 .invoice-item-report-table th, .invoice-item-report-table td { box-sizing: border-box; min-width: 0; height: auto; border: 1px solid #111; padding: 5px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .invoice-item-report-table th { background: var(--tesvila-blue); color: #fff; font-size: 10px; }
 .invoice-item-report-table th:nth-child(1), .invoice-item-report-table td:nth-child(1) { width: 5%; text-align: center; }
-.invoice-item-report-table th:nth-child(2), .invoice-item-report-table td:nth-child(2) { width: 59%; }
-.invoice-item-report-table th:nth-child(3), .invoice-item-report-table td:nth-child(3) { width: 9%; text-align: center; }
-.invoice-item-report-table th:nth-child(4), .invoice-item-report-table td:nth-child(4), .invoice-item-report-table th:nth-child(5), .invoice-item-report-table td:nth-child(5) { width: 13.5%; text-align: right; }
+.invoice-item-report-table th:nth-child(2), .invoice-item-report-table td:nth-child(2) { width: 49%; }
+.invoice-item-report-table th:nth-child(3), .invoice-item-report-table td:nth-child(3) { width: 8%; text-align: center; }
+.invoice-item-report-table th:nth-child(4), .invoice-item-report-table td:nth-child(4) { width: 13%; text-align: right; }
+.invoice-item-report-table th:nth-child(5), .invoice-item-report-table td:nth-child(5) { width: 10%; text-align: right; }
+.invoice-item-report-table th:nth-child(6), .invoice-item-report-table td:nth-child(6) { width: 15%; text-align: right; }
 .invoice-item-report-table tr { break-inside: avoid; page-break-inside: avoid; }
 .invoice-description { min-width: 0; line-height: 1.28; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .invoice-blank-row { height: 28px; }
@@ -958,6 +960,7 @@ textarea.input {
 .invoice-qr img { width: 88px; height: 88px; object-fit: contain; }
 .invoice-issued-by { min-width: 0; padding-bottom: 18px; text-align: right; font-size: clamp(12px, 1.7vw, 15px); font-weight: 800; overflow-wrap: anywhere; word-break: break-word; }
 .invoice-method-totals, .invoice-total-table, .invoice-terms-row, .invoice-qr, .invoice-issued-by { break-inside: avoid; page-break-inside: avoid; }
+.gst-mode-select { width: auto; min-width: 118px; padding-block: 6px; font-weight: 700; }
 
 @page { size: A4 portrait; margin: 0; }
 @media print {

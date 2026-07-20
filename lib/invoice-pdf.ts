@@ -7,6 +7,7 @@ import {
   rgb,
 } from "pdf-lib";
 import type { InvoiceReportData, InvoiceReportItem } from "./invoice-report";
+import { formatDiscountPercent } from "./invoice-discount";
 import {
   fitPdfTextSize,
   rightAlignedPdfX,
@@ -268,10 +269,11 @@ function drawSectionTitle(
 
 const columns = {
   number: { x: MARGIN, width: 28 },
-  description: { x: MARGIN + 28, width: 309 },
-  quantity: { x: MARGIN + 337, width: 50 },
-  unitPrice: { x: MARGIN + 387, width: 69 },
-  amount: { x: MARGIN + 456, width: CONTENT_WIDTH - 456 },
+  description: { x: MARGIN + 28, width: 257 },
+  quantity: { x: MARGIN + 285, width: 40 },
+  unitPrice: { x: MARGIN + 325, width: 72 },
+  discount: { x: MARGIN + 397, width: 54 },
+  amount: { x: MARGIN + 451, width: CONTENT_WIDTH - 451 },
 };
 
 function drawTableHeader(kit: Kit, page: PDFPage, topY: number) {
@@ -288,8 +290,9 @@ function drawTableHeader(kit: Kit, page: PDFPage, topY: number) {
   const headers = [
     ["No.", columns.number],
     ["Item Description", columns.description],
-    ["Quantity", columns.quantity],
+    ["Qty", columns.quantity],
     ["Unit Price", columns.unitPrice],
+    ["Discount", columns.discount],
     ["Amount", columns.amount],
   ] as const;
   headers.forEach(([label, column], index) => {
@@ -337,7 +340,7 @@ function drawItemRow(
     borderColor: BLACK,
     borderWidth: 0.55,
   });
-  [columns.description.x, columns.quantity.x, columns.unitPrice.x, columns.amount.x].forEach((x) =>
+  [columns.description.x, columns.quantity.x, columns.unitPrice.x, columns.discount.x, columns.amount.x].forEach((x) =>
     page.drawLine({
       start: { x, y: topY },
       end: { x, y: topY - height },
@@ -376,6 +379,15 @@ function drawItemRow(
     x: rightAlignedPdfX(kit.regular, unitPrice, unitPriceSize, columns.unitPrice.x, columns.unitPrice.width),
     y: topY - 15,
     size: unitPriceSize,
+    font: kit.regular,
+    color: BLACK,
+  });
+  const discount = formatDiscountPercent(item.discount);
+  const discountSize = fitPdfTextSize(kit.regular, discount, columns.discount.width - 10, 8, 7);
+  page.drawText(discount, {
+    x: rightAlignedPdfX(kit.regular, discount, discountSize, columns.discount.x, columns.discount.width),
+    y: topY - 15,
+    size: discountSize,
     font: kit.regular,
     color: BLACK,
   });
@@ -504,7 +516,7 @@ function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: numb
   });
   const totals = [
     ["Total", data.totals.subtotal],
-    [`GST ${data.totals.gstRate}%`, data.totals.gstAmount],
+    [data.totals.gstLabel, data.totals.gstAmount],
     ["Grand Total", data.totals.grandTotal],
     ["Deposit", data.totals.deposit],
     ["Balance", data.totals.balance],

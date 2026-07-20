@@ -6,6 +6,7 @@ import {
   discountPercentFromAmount,
   withDiscountAmounts,
 } from "@/lib/invoice-discount";
+import { inferGstMode, isGstMode } from "@/lib/invoice-totals";
 
 function database() {
   return createServerDatabase();
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
     db
       .from("invoices")
       .select(
-        "id,invoice_number,invoice_date,invoice_title,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_rate,subtotal,gst_amount,grand_total,deposit,balance,item_collect_method,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),related_delivery_orders:delivery_orders(id,do_number,delivery_date,status,deleted_at,items:delivery_order_items(invoice_item_id,quantity))",
+        "id,invoice_number,invoice_date,invoice_title,customer_id,customer_company_name,customer_contact_person,customer_contact_number,billing_address,delivery_address,issued_by_user_id,issued_by_display_name,po_number,gst_mode,gst_rate,subtotal,gst_amount,grand_total,deposit,balance,item_collect_method,payment_method,remarks,status,created_at,customer:customers(company_name,billing_address,delivery_address,contact_person,contact_number),items:invoice_items(id,product_id,product_model,sku,product_type,description,brand,quantity,unit_price,unit_cost,discount_amount,remarks),related_delivery_orders:delivery_orders(id,do_number,delivery_date,status,deleted_at,items:delivery_order_items(invoice_item_id,quantity))",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
@@ -179,6 +180,12 @@ export async function GET(req: NextRequest) {
     deliveryStatus,
     poNumber: x.po_number || "",
     items: invoiceItems,
+    gstMode: inferGstMode(x.gst_mode, {
+      gstRate: x.gst_rate,
+      subtotal: x.subtotal,
+      gstAmount: x.gst_amount,
+      grandTotal: x.grand_total,
+    }),
     gstRate: Number(x.gst_rate),
     subtotal: x.subtotal == null ? undefined : Number(x.subtotal),
     gstAmount: x.gst_amount == null ? undefined : Number(x.gst_amount),
@@ -258,9 +265,9 @@ export async function POST(req: NextRequest) {
   }
   const fn =
     body.type === "invoice_with_do"
-      ? "create_invoice_with_do_v10"
+      ? "create_invoice_with_do_v11"
       : body.type === "invoice_only"
-        ? "create_invoice_only_v8"
+        ? "create_invoice_only_v9"
         : "create_delivery_order_only_v10";
   const clientPayload = {
     ...body,
@@ -270,7 +277,15 @@ export async function POST(req: NextRequest) {
   let payload = clientPayload;
   if (body.type === "invoice_with_do" || body.type === "invoice_only") {
     try {
-      payload = withDiscountAmounts(clientPayload);
+      const discountedPayload = withDiscountAmounts(clientPayload);
+      if (discountedPayload.gstMode !== undefined && !isGstMode(discountedPayload.gstMode))
+        throw new Error("Please select a valid GST option.");
+      const gstMode = inferGstMode(discountedPayload.gstMode, discountedPayload);
+      payload = {
+        ...discountedPayload,
+        gstMode,
+        gstRate: gstMode === "gst_9" ? 9 : 0,
+      };
     } catch (discountError) {
       return NextResponse.json(
         { error: discountError instanceof Error ? discountError.message : "Invalid Invoice discount." },
@@ -311,7 +326,7 @@ export async function PATCH(req: NextRequest) {
   }
   const fn =
     body.type === "invoice"
-      ? "update_invoice_document_v8"
+      ? "update_invoice_document_v9"
       : body.type === "delivery_order"
         ? "update_delivery_order_document_v10"
         : null;
@@ -323,7 +338,15 @@ export async function PATCH(req: NextRequest) {
   let record = body.record;
   if (body.type === "invoice") {
     try {
-      record = withDiscountAmounts(body.record);
+      const discountedRecord = withDiscountAmounts(body.record);
+      if (discountedRecord.gstMode !== undefined && !isGstMode(discountedRecord.gstMode))
+        throw new Error("Please select a valid GST option.");
+      const gstMode = inferGstMode(discountedRecord.gstMode, discountedRecord);
+      record = {
+        ...discountedRecord,
+        gstMode,
+        gstRate: gstMode === "gst_9" ? 9 : 0,
+      };
     } catch (discountError) {
       return NextResponse.json(
         { error: discountError instanceof Error ? discountError.message : "Invalid Invoice discount." },

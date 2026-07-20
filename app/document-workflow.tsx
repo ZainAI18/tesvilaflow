@@ -36,6 +36,11 @@ import {
   invoiceItemLineAmount,
   isValidDiscountPercent,
 } from "@/lib/invoice-discount";
+import {
+  calculateInvoiceTotals,
+  gstModeLabel,
+  type GstMode,
+} from "@/lib/invoice-totals";
 import { fitPdfTextSize, wrapPdfText as wrap } from "@/lib/pdf-text-layout";
 import {
   sortCustomersByCustomerId,
@@ -92,6 +97,7 @@ export type InvoiceRecord = {
   poNumber: string;
   items: DocumentItem[];
   gstRate: number;
+  gstMode: GstMode;
   subtotal?: number;
   gstAmount?: number;
   grandTotal?: number;
@@ -783,15 +789,17 @@ function DocumentForm({
     [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState(""),
     [selectedInvoiceQuery, setSelectedInvoiceQuery] = useState(""),
     [deposit, setDeposit] = useState(0),
+    [gstMode, setGstMode] = useState<GstMode>("gst_9"),
     [clientRequestId] = useState(() => crypto.randomUUID());
-  const subtotal = items.reduce(
-      (sum, item) => sum + (invoice
-        ? invoiceItemLineAmount(item)
-        : item.quantity * item.unitPrice - (item.discount || 0)),
-      0,
-    ),
-    gst = subtotal * 0.09,
-    total = subtotal + gst;
+  const invoiceTotals = calculateInvoiceTotals(items, gstMode);
+  const subtotal = invoice
+      ? invoiceTotals.subtotal
+      : items.reduce(
+          (sum, item) => sum + item.quantity * item.unitPrice - (item.discount || 0),
+          0,
+        ),
+    gst = invoice ? invoiceTotals.gstAmount : 0,
+    total = invoice ? invoiceTotals.grandTotal : subtotal;
   const selectedInvoice = !invoice && selectedInvoiceId
     ? store.invoices.find((entry) => entry.id === selectedInvoiceId)
     : undefined;
@@ -920,6 +928,8 @@ function DocumentForm({
     if (!billingAddress.trim()) return "Billing Address is required.";
     if (!itemCollectMethod) return "Please select an item collect method.";
     if (invoice && !paymentMethod) return "Please select a payment method.";
+    if (invoice && !["gst_9", "included"].includes(gstMode))
+      return "Please select a valid GST option.";
     if (!items.length) return "Add at least one item before saving.";
     for (let index = 0; index < items.length; index++) {
       const item = items[index];
@@ -992,7 +1002,8 @@ function DocumentForm({
           ...common,
           invoiceDate: new Date().toISOString().slice(0, 10),
           poNumber: po,
-          gstRate: 9,
+          gstMode,
+          gstRate: invoiceTotals.gstRate,
           deposit,
           paymentStatus: "Issued",
           paymentMethod,
@@ -1299,7 +1310,16 @@ function DocumentForm({
               <b>{fmt(subtotal)}</b>
             </div>
             <div className="total-line">
-              <span>GST (9%)</span>
+              <select
+                id="invoice-gst-mode"
+                className="input gst-mode-select"
+                aria-label="GST option"
+                value={gstMode}
+                onChange={(event) => setGstMode(event.target.value as GstMode)}
+              >
+                <option value="gst_9">GST 9%</option>
+                <option value="included">Included</option>
+              </select>
               <b>{fmt(gst)}</b>
             </div>
             <div className="total-line grand">
@@ -1524,9 +1544,7 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
                       </td>
                       <td><span className={`status ${inv.deliveryStatus === "Partially Delivered" ? "amber" : inv.deliveryStatus === "Fully Delivered" ? "" : "gray"}`}>{inv.deliveryStatus}</span></td>
                       <td>{inv.poNumber || "—"}</td>
-                      <td>
-                        <b>{fmt(subtotal * (1 + inv.gstRate / 100))}</b>
-                      </td>
+                      <td><b>{fmt(inv.grandTotal ?? subtotal * (1 + inv.gstRate / 100))}</b></td>
                       <td>
                         <span
                           className={`status ${inv.paymentStatus === "Unpaid" ? "red" : inv.paymentStatus === "Partially Paid" ? "amber" : ""}`}
@@ -1702,13 +1720,14 @@ function InvoiceReportPreview({
                 )}
                 <h3 className="invoice-items-title">{report.sectionTitle}</h3>
                 <table className="invoice-item-report-table">
-                  <thead><tr><th>No.</th><th>Item Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th></tr></thead>
+                  <thead><tr><th>No.</th><th>Item Description</th><th>Qty</th><th>Unit Price</th><th>Discount</th><th>Amount</th></tr></thead>
                   <tbody>{rowsForPage(pageItems, pageIndex).map((item, rowIndex) => (
                     <tr key={item?.id || `blank-${rowIndex}`} className={!item ? "invoice-blank-row" : undefined}>
                       <td>{item?.number || ""}</td>
                       <td>{item && <div className="invoice-description"><span>{[item.brand, item.description].filter(Boolean).join(" ")}</span></div>}</td>
                       <td>{item?.quantity ?? ""}</td>
                       <td>{item ? invoiceReportMoney(item.unitPrice) : ""}</td>
+                      <td>{item ? formatDiscountPercent(item.discount) : ""}</td>
                       <td>{item ? invoiceReportMoney(item.amount) : ""}</td>
                     </tr>
                   ))}</tbody>
@@ -1724,7 +1743,7 @@ function InvoiceReportPreview({
                       </div>
                       <table className="invoice-total-table"><tbody>
                         <tr><th>Total</th><td>{invoiceReportMoney(report.totals.subtotal)}</td></tr>
-                        <tr><th>GST {report.totals.gstRate}%</th><td>{invoiceReportMoney(report.totals.gstAmount)}</td></tr>
+                        <tr><th>{report.totals.gstLabel}</th><td>{invoiceReportMoney(report.totals.gstAmount)}</td></tr>
                         <tr><th>Grand Total</th><td>{invoiceReportMoney(report.totals.grandTotal)}</td></tr>
                         <tr><th>Deposit</th><td>{invoiceReportMoney(report.totals.deposit)}</td></tr>
                         <tr><th>Balance</th><td>{invoiceReportMoney(report.totals.balance)}</td></tr>
@@ -1784,6 +1803,9 @@ function RecordModal({
     readOnly = mode === "view";
   const inv = draft as InvoiceRecord,
     delivery = draft as DORecord;
+  const modalInvoiceTotals = invoice
+    ? calculateInvoiceTotals(inv.items, inv.gstMode)
+    : null;
   const activeModalInvoice = !invoice && delivery.invoiceId
     ? store.invoices.find((entry) => entry.id === delivery.invoiceId)
     : undefined;
@@ -1915,6 +1937,8 @@ function RecordModal({
     if (!draft.customer.billingAddress.trim()) return "Billing Address is required.";
     if (!draft.itemCollectMethod) return "Please select an item collect method.";
     if (invoice && !inv.paymentMethod) return "Please select a payment method.";
+    if (invoice && !["gst_9", "included"].includes(inv.gstMode))
+      return "Please select a valid GST option.";
     for (let index = 0; index < draft.items.length; index++) {
       const item = draft.items[index];
       const product = reference.products.find((entry) => entry.id === item.productId && entry.sku === item.sku);
@@ -1931,6 +1955,8 @@ function RecordModal({
       )
         return `Item ${index + 1}: Delivery quantity cannot exceed the remaining quantity of ${item.remainingQuantity}.`;
       if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
+      if (invoice && !isValidDiscountPercent(item.discount ?? 0))
+        return `Item ${index + 1}: Discount must be between 0% and 100%, with up to 2 decimal places.`;
     }
     if (!invoice) {
       const invoiceItemProductPairs = draft.items.flatMap((item) => item.invoiceItemId && item.productId ? [`${item.invoiceItemId}:${item.productId}`] : []);
@@ -2390,28 +2416,36 @@ function RecordModal({
           {!invoice && !readOnly && delivery.invoiceId && !draft.items.length && <div className="status gray mt">No new delivery items added.</div>}
           {invoice &&
             (() => {
-              const subtotal = inv.items.reduce(
-                  (sum, item) => sum + invoiceItemLineAmount(item),
-                  0,
-                ),
-                gst = (subtotal * inv.gstRate) / 100;
+              const totals = modalInvoiceTotals!;
               return (
                 <div className="totals">
                   <div className="total-line">
                     <span>Subtotal</span>
-                    <b>{fmt(subtotal)}</b>
+                    <b>{fmt(totals.subtotal)}</b>
                   </div>
                   <div className="total-line">
-                    <span>GST ({inv.gstRate}%)</span>
-                    <b>{fmt(gst)}</b>
+                    {readOnly ? (
+                      <span>{gstModeLabel(inv.gstMode)}</span>
+                    ) : (
+                      <select
+                        className="input gst-mode-select"
+                        aria-label="GST option"
+                        value={inv.gstMode}
+                        onChange={(event) => setField("gstMode", event.target.value as GstMode)}
+                      >
+                        <option value="gst_9">GST 9%</option>
+                        <option value="included">Included</option>
+                      </select>
+                    )}
+                    <b>{fmt(totals.gstAmount)}</b>
                   </div>
                   <div className="total-line grand">
                     <span>Grand total</span>
-                    <span>{fmt(subtotal + gst)}</span>
+                    <span>{fmt(totals.grandTotal)}</span>
                   </div>
                   <div className="total-line">
                     <span>Balance</span>
-                    <b>{fmt(subtotal + gst - inv.deposit)}</b>
+                    <b>{fmt(totals.grandTotal - inv.deposit)}</b>
                   </div>
                 </div>
               );
