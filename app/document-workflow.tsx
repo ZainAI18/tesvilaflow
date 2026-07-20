@@ -320,6 +320,16 @@ export function DocumentProvider({
     // Initial remote hydration intentionally updates this external-store state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDocuments().catch(() => {});
+    const refetch = () => loadDocuments().catch(() => {});
+    const refetchWhenVisible = () => {
+      if (document.visibilityState === "visible") refetch();
+    };
+    window.addEventListener("focus", refetch);
+    document.addEventListener("visibilitychange", refetchWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refetch);
+      document.removeEventListener("visibilitychange", refetchWhenVisible);
+    };
   }, []);
   async function request(body: unknown, method = "POST") {
     const response = await authFetch("/api/documents", {
@@ -361,6 +371,12 @@ export function DocumentProvider({
   }
   async function remove(type: "invoice" | "delivery_order", id: string) {
     await request({ type, id }, "DELETE");
+    if (type === "invoice") {
+      setInvoices((current) => current.filter((invoice) => invoice.id !== id));
+      setDOs((current) => current.filter((order) => order.invoiceId !== id));
+    } else {
+      setDOs((current) => current.filter((order) => order.id !== id));
+    }
     await loadDocuments();
   }
   return (
@@ -1282,6 +1298,14 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
       mode: "view" | "edit";
     } | null>(null),
     [busy, setBusy] = useState("");
+  useEffect(() => {
+    if (!view || records.some((record) => record.id === view.record.id)) return;
+    const timer = window.setTimeout(() => {
+      setView(null);
+      store.notify("This record no longer exists.");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [records, store, view]);
   async function pdf(record: InvoiceRecord | DORecord, type: "invoice" | "do") {
     setBusy(record.id + type);
     try {
@@ -1337,10 +1361,8 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
       );
       return;
     }
-    const message = invoice && inv.relatedDeliveryOrders.length
-      ? `This Invoice has ${inv.relatedDeliveryOrders.length} related Delivery Orders. Deleting the Invoice will also delete all related Delivery Orders and reverse their stock movements. Continue?`
-      : invoice
-        ? `Delete ${inv.invoiceNumber}? This action is audited.`
+    const message = invoice
+      ? `Deleting this Invoice will also permanently delete all related Delivery Orders, Delivery Order Items and Stock Movement records. Inventory will be updated. This action cannot be undone.\n\nThis Invoice has ${inv.relatedDeliveryOrders.length} related Delivery Orders. Continue?`
         : "Delete this Delivery Order? Its inventory movement will be reversed.";
     if (
       !confirm(message)
@@ -1348,9 +1370,17 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
       return;
     try {
       await store.remove(invoice ? "invoice" : "delivery_order", record.id);
-      store.notify("Document deleted and audit logged");
+      store.notify(
+        invoice
+          ? "Invoice and all related records were permanently deleted from Supabase"
+          : "Document deleted and audit logged",
+      );
     } catch (e) {
-      store.notify(e instanceof Error ? e.message : "Delete failed");
+      store.notify(
+        e instanceof Error
+          ? e.message
+          : "Unable to delete the Invoice and its related records. No changes were completed.",
+      );
     }
   }
   return (

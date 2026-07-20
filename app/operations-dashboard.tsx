@@ -150,6 +150,11 @@ function useOperations(start?: string, end?: string) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+  useEffect(() => {
+    const refetch = () => void load();
+    window.addEventListener("focus", refetch);
+    return () => window.removeEventListener("focus", refetch);
+  }, [load]);
   return { data, error, loading, load };
 }
 function State({ loading, error }: { loading: boolean; error: string }) {
@@ -747,6 +752,11 @@ export function SalesReport() {
     // Filter changes intentionally refresh the server-calculated report.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
+  }, [load]);
+  useEffect(() => {
+    const refetch = () => void load();
+    window.addEventListener("focus", refetch);
+    return () => window.removeEventListener("focus", refetch);
   }, [load]);
 
   function changeMonth(value: string) {

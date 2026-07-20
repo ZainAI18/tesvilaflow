@@ -67,6 +67,11 @@ export function DashboardManager() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
+  useEffect(() => {
+    const refetch = () => void load(month || undefined);
+    window.addEventListener("focus", refetch);
+    return () => window.removeEventListener("focus", refetch);
+  }, [load, month]);
 
   const guide = useMemo(() => performance(data?.summary.grossProfitPercentage || 0), [data]);
   if (loading && !data) return <div className="card dashboard-state">Loading dashboard...</div>;
