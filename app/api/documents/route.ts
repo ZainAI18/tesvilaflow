@@ -6,6 +6,42 @@ import { createServerDatabase } from "@/lib/supabase-server";
 function database() {
   return createServerDatabase();
 }
+
+const parentSkuMessage =
+  "This Invoice contains a Parent SKU. Parent SKUs can only be saved using ‘Save Invoice Only’. Create the Delivery Order later from the Delivery Order Only page and select the related Child SKU.";
+
+async function parentProductsInPayload(
+  db: NonNullable<ReturnType<typeof database>>,
+  payload: Record<string, unknown>,
+) {
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const productIds = Array.from(
+    new Set(
+      items
+        .map((item) =>
+          item && typeof item === "object" && "productId" in item
+            ? String(item.productId || "")
+            : "",
+        )
+        .filter(Boolean),
+    ),
+  );
+  if (!productIds.length) return [];
+  const { data, error } = await db
+    .from("products")
+    .select("parent_product_id")
+    .in("parent_product_id", productIds)
+    .is("deleted_at", null);
+  if (error) throw new Error(error.message);
+  const parentIds = new Set((data || []).map((product) => product.parent_product_id));
+  return items.filter(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      "productId" in item &&
+      parentIds.has(String(item.productId || "")),
+  );
+}
 export async function GET(req: NextRequest) {
   const auth = await requireApiSession(req);
   if (auth.response) return auth.response;
@@ -186,12 +222,29 @@ export async function POST(req: NextRequest) {
       { error: "Unknown document type" },
       { status: 400 },
     );
+  try {
+    const parents = await parentProductsInPayload(db, body);
+    if (body.type === "invoice_with_do" && parents.length) {
+      return NextResponse.json({ error: parentSkuMessage }, { status: 400 });
+    }
+    if (body.type === "delivery_order" && parents.length) {
+      return NextResponse.json(
+        { error: "Parent SKUs cannot be used in a Delivery Order. Select a valid Child SKU or normal Product SKU." },
+        { status: 400 },
+      );
+    }
+  } catch (validationError) {
+    return NextResponse.json(
+      { error: validationError instanceof Error ? validationError.message : "Unable to validate Parent SKU items." },
+      { status: 400 },
+    );
+  }
   const fn =
     body.type === "invoice_with_do"
-      ? "create_invoice_with_do_v9"
+      ? "create_invoice_with_do_v10"
       : body.type === "invoice_only"
         ? "create_invoice_only_v8"
-        : "create_delivery_order_only_v9";
+        : "create_delivery_order_only_v10";
   const payload = {
     ...body,
     issuedByUserId: auth.session.userId,
@@ -212,11 +265,27 @@ export async function PATCH(req: NextRequest) {
       { status: 503 },
     );
   const body = await req.json();
+  if (body.type === "delivery_order") {
+    try {
+      const parents = await parentProductsInPayload(db, body.record || {});
+      if (parents.length) {
+        return NextResponse.json(
+          { error: "Parent SKUs cannot be used in a Delivery Order. Select a valid Child SKU or normal Product SKU." },
+          { status: 400 },
+        );
+      }
+    } catch (validationError) {
+      return NextResponse.json(
+        { error: validationError instanceof Error ? validationError.message : "Unable to validate Parent SKU items." },
+        { status: 400 },
+      );
+    }
+  }
   const fn =
     body.type === "invoice"
       ? "update_invoice_document_v8"
       : body.type === "delivery_order"
-        ? "update_delivery_order_document_v9"
+        ? "update_delivery_order_document_v10"
         : null;
   if (!fn)
     return NextResponse.json(

@@ -664,6 +664,15 @@ function itemFromProduct(item: DocumentItem, product: ProductOption | undefined,
   };
 }
 
+const isParentProduct = (productId: string | undefined, products: ProductOption[]) =>
+  !!productId && products.some((candidate) => candidate.parent_product_id === productId);
+
+const deliverableProducts = (products: ProductOption[]) =>
+  products.filter((product) => !isParentProduct(product.id, products));
+
+const parentSkuItems = (items: DocumentItem[], products: ProductOption[]) =>
+  items.filter((item) => isParentProduct(item.productId, products));
+
 function selectDeliveryProduct(
   row: DocumentItem,
   product: ProductOption | undefined,
@@ -675,7 +684,7 @@ function selectDeliveryProduct(
 ) {
   const base = itemFromProduct(row, product, typedSku);
   if (!product) return { item: base };
-  if (allProducts.some((candidate) => candidate.parent_product_id === product.id)) {
+  if (isParentProduct(product.id, allProducts)) {
     return { item: row, error: `Please select a Child SKU for Parent SKU ${product.sku}.` };
   }
   const otherItems = currentItems.filter((item) => item.id !== row.id);
@@ -889,13 +898,13 @@ function DocumentForm({
     const product = reference.products.find((entry) => entry.sku.toLowerCase() === value.trim().toLowerCase());
     const row = items.find((entry) => entry.id === id);
     if (!row) return;
-    const selected = invoice || !selectedInvoice
+    const selected = invoice
       ? { item: itemFromProduct(row, product, value) }
       : selectDeliveryProduct(row, product, value, selectedInvoice, items, reference.products);
     setError(selected.error || "");
     setItems((rows) => rows.map((entry) => entry.id === id ? selected.item : entry));
   }
-  function validationError() {
+  function validationError(saveMode: "invoice-do" | "invoice-only" = "invoice-do") {
     if (!customerName.trim()) return "Customer company is required.";
     if (!billingAddress.trim()) return "Billing Address is required.";
     if (!itemCollectMethod) return "Please select an item collect method.";
@@ -905,6 +914,8 @@ function DocumentForm({
       const item = items[index];
       const product = reference.products.find((entry) => entry.id === item.productId && entry.sku === item.sku);
       if (!product) return `Item ${index + 1}: Please select a valid SKU.`;
+      if (!invoice && isParentProduct(product.id, reference.products))
+        return `Item ${index + 1} — ${product.sku} is a Parent SKU and cannot be used in a Delivery Order.`;
       if (item.quantity <= 0) return `Item ${index + 1}: Quantity must be greater than zero.`;
       if (
         selectedInvoiceId &&
@@ -933,10 +944,18 @@ function DocumentForm({
     const extraProductIds = items.flatMap((item) => item.itemSource === "extra" && item.productId ? [item.productId] : []);
     if (new Set(extraProductIds).size !== extraProductIds.length)
       return "This Extra Item has already been added to the current Delivery Order.";
+    if (invoice && saveMode === "invoice-do") {
+      const parents = parentSkuItems(items, reference.products);
+      if (parents.length) {
+        const first = parents[0];
+        const row = items.findIndex((item) => item.id === first.id) + 1;
+        return `Item ${row} — ${first.sku} is a Parent SKU and cannot be used to create a Delivery Order. Parent SKUs can only be saved using ‘Save Invoice Only’. Create the Delivery Order later from the Delivery Order Only page and select the related Child SKU.`;
+      }
+    }
     return "";
   }
   async function submit(saveMode: "invoice-do" | "invoice-only" = "invoice-do") {
-    const validation = validationError();
+    const validation = validationError(saveMode);
     setError(validation);
     if (validation) return;
     setSaving(saveMode);
@@ -1150,7 +1169,7 @@ function DocumentForm({
                   onChange={(e) => chooseProduct(row.id, e.target.value)}
                 />
                 <datalist id={`product-options-${row.id}`}>
-                  {reference.products.map((product) => (
+                  {(invoice ? reference.products : deliverableProducts(reference.products)).map((product) => (
                     <option key={product.id} value={product.sku}>
                       {[product.sku, product.product_model, product.description].filter(Boolean).join(" — ")}
                     </option>
@@ -1272,13 +1291,22 @@ function DocumentForm({
             {error}
           </div>
         )}
+        {invoice && parentSkuItems(items, reference.products).length > 0 && (
+          <div className="status amber mt parent-sku-guidance">
+            Parent SKU detected. Save Invoice Only, then create the Delivery Order from Delivery Order Only using Child SKUs.
+          </div>
+        )}
         <div className="row between mt document-footer-actions">
           <div><div className="issued-by-field"><span>Issued By</span><b>{session?.displayName || "—"}</b></div><span className="section-sub">No PDF is generated during this save.</span></div>
           <div className="row wrap document-save-actions">
             <button className="btn" disabled={!!saving} onClick={() => onNavigate?.("Dashboard")}>Cancel</button>
             <button
               className="btn primary"
-              disabled={!!saving || reference.loading}
+              disabled={
+                !!saving ||
+                reference.loading ||
+                (invoice && parentSkuItems(items, reference.products).length > 0)
+              }
               onClick={() => submit("invoice-do")}
             >
               <Save size={13} />
@@ -1763,7 +1791,7 @@ function RecordModal({
     const product = reference.products.find((entry) => entry.sku.toLowerCase() === value.trim().toLowerCase());
     const row = draft.items.find((item) => item.id === id);
     if (!row) return;
-    const selected = !invoice && activeModalInvoice
+    const selected = !invoice
       ? selectDeliveryProduct(row, product, value, activeModalInvoice, draft.items, reference.products, savedDelivery)
       : { item: itemFromProduct(row, product, value) };
     if (selected.error) {
@@ -1857,7 +1885,10 @@ function RecordModal({
     if (invoice && !inv.paymentMethod) return "Please select a payment method.";
     for (let index = 0; index < draft.items.length; index++) {
       const item = draft.items[index];
-      if (!reference.products.some((product) => product.id === item.productId && product.sku === item.sku)) return `Item ${index + 1}: Please select a valid SKU.`;
+      const product = reference.products.find((entry) => entry.id === item.productId && entry.sku === item.sku);
+      if (!product) return `Item ${index + 1}: Please select a valid SKU.`;
+      if (!invoice && isParentProduct(product.id, reference.products))
+        return `Item ${index + 1} — ${product.sku} is a Parent SKU and cannot be used in a Delivery Order.`;
       if (item.quantity <= 0) return `Item ${index + 1}: Quantity must be greater than zero.`;
       if (
         !invoice &&
@@ -2187,7 +2218,7 @@ function RecordModal({
                         onChange={(e) => chooseModalProduct(i.id, e.target.value)}
                       />
                       <datalist id={`edit-product-options-${i.id}`}>
-                        {reference.products.map((product) => (
+                        {(invoice ? reference.products : deliverableProducts(reference.products)).map((product) => (
                           <option key={product.id} value={product.sku}>
                             {[product.sku, product.product_model, product.description].filter(Boolean).join(" — ")}
                           </option>
