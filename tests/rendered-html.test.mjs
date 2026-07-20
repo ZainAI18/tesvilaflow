@@ -127,8 +127,8 @@ test("invoice and delivery-order method dropdowns persist through constrained da
   assert.match(workflow, /itemCollectLabel\(order\.itemCollectMethod\)/);
   assert.match(report, /invoice\.paymentMethod === "paynow"/);
   assert.match(report, /invoice\.paymentMethod === "terms"/);
-  assert.match(documentsApi, /create_invoice_with_do_v9/);
-  assert.match(documentsApi, /update_delivery_order_document_v9/);
+  assert.match(documentsApi, /create_invoice_with_do_v10/);
+  assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(migration, /item_collect_method in \('delivery','self_collect'\)/);
   assert.match(migration, /payment_method in \('paynow','cash','terms'\)/);
   assert.match(migration, /update public\.delivery_orders[\s\S]*invoice_id = p_id/);
@@ -143,7 +143,7 @@ test("item descriptions are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "description", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "description", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /readOnly value=\{row\.description\}/);
-  assert.match(documentsApi, /create_invoice_with_do_v9/);
+  assert.match(documentsApi, /create_invoice_with_do_v10/);
   assert.match(documentsApi, /update_invoice_document_v8/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
@@ -159,8 +159,8 @@ test("item brands are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "brand", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "brand", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /updated\(row\.id, "brand"/);
-  assert.match(documentsApi, /create_invoice_with_do_v9/);
-  assert.match(documentsApi, /update_delivery_order_document_v9/);
+  assert.match(documentsApi, /create_invoice_with_do_v10/);
+  assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(migration, /set brand = coalesce\(payload_item\.value->>'brand', ''\)/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
@@ -185,8 +185,8 @@ test("delivery-order-only supports an optional saved Invoice selector", async ()
   assert.match(workflow, /invoiceId: selectedInvoiceId \|\| undefined/);
   assert.match(workflow, /Invoice No\.: \$\{order\.invoiceNumber \|\|/);
   assert.match(documentsApi, /invoice_id,invoice_number/);
-  assert.match(documentsApi, /create_delivery_order_only_v9/);
-  assert.match(documentsApi, /update_delivery_order_document_v9/);
+  assert.match(documentsApi, /create_delivery_order_only_v10/);
+  assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(migration, /add column if not exists invoice_number text/);
   assert.match(migration, /set invoice_id = v_invoice_id/);
   assert.match(migration, /Selected Invoice was not found/);
@@ -234,7 +234,7 @@ test("one Invoice supports multiple partial Delivery Orders without over-deliver
   assert.match(database, /fnkkeadpkjshsnjmoznl/);
   assert.match(documentsApi, /invoice_item_id/);
   assert.match(documentsApi, /related_delivery_orders:delivery_orders/);
-  assert.match(documentsApi, /create_delivery_order_only_v9/);
+  assert.match(documentsApi, /create_delivery_order_only_v10/);
   assert.match(workflow, /Invoice Qty/);
   assert.match(workflow, /Previously Delivered/);
   assert.match(workflow, /Remaining/);
@@ -407,9 +407,9 @@ test("Delivery Order contacts remain separate from Invoice and customer contacts
   assert.match(css, /\.document-delivery-contact-row/);
   assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(documentsApi, /delivery_contact_person,delivery_contact_number/);
-  assert.match(documentsApi, /create_invoice_with_do_v9/);
-  assert.match(documentsApi, /create_delivery_order_only_v9/);
-  assert.match(documentsApi, /update_delivery_order_document_v9/);
+  assert.match(documentsApi, /create_invoice_with_do_v10/);
+  assert.match(documentsApi, /create_delivery_order_only_v10/);
+  assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(migration, /add column if not exists delivery_contact_person text/);
   assert.match(migration, /add column if not exists delivery_contact_number text/);
   assert.match(migration, /create_invoice_with_do_v7\(p_payload\)/);
@@ -465,7 +465,7 @@ test("Delivery Order PDF uses the Invoice blue theme and Invoice title is editab
   assert.match(workflow, /titleOfInvoice: titleOfInvoice\.trim\(\) \|\| "Supply Sanitary Ware"/);
   assert.match(report, /sectionTitle: safeText\(invoice\.titleOfInvoice, "Supply Sanitary Ware"\)/);
   assert.match(documentsApi, /invoice_title/);
-  assert.match(documentsApi, /create_invoice_with_do_v9/);
+  assert.match(documentsApi, /create_invoice_with_do_v10/);
   assert.match(documentsApi, /create_invoice_only_v8/);
   assert.match(documentsApi, /update_invoice_document_v8/);
   assert.match(migration, /add column if not exists invoice_title text/);
@@ -504,8 +504,8 @@ test("Delivery Order Only separates read-only history from current Invoice and E
   assert.match(css, /background: #eef0f2/);
   assert.match(documentsApi, /item_source/);
   assert.match(documentsApi, /if \(!item\.invoice_item_id\) return/);
-  assert.match(documentsApi, /create_delivery_order_only_v9/);
-  assert.match(documentsApi, /update_delivery_order_document_v9/);
+  assert.match(documentsApi, /create_delivery_order_only_v10/);
+  assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(migration, /add column if not exists item_source text/);
   assert.match(migration, /new\.item_source := case when new\.invoice_item_id is null then 'extra' else 'invoice' end/);
   assert.match(migration, /delivery_item\.invoice_item_id is not null/);
@@ -518,12 +518,14 @@ test("Delivery Order Only separates read-only history from current Invoice and E
   assert.doesNotMatch(invoicePdf, /Previously Delivered Items|item_source|itemSource/);
 });
 
-test("Parent SKUs map Invoice items to independent Child inventory without combining stock", async () => {
-  const [workflow, productManager, productsApi, parentMigration, inventoryMigration, database] = await Promise.all([
+test("Parent SKUs are Invoice-only and Delivery Orders require physical Child SKUs", async () => {
+  const [workflow, productManager, productsApi, documentsApi, parentMigration, enforcementMigration, inventoryMigration, database] = await Promise.all([
     read("app/document-workflow.tsx"),
     read("app/product-manager.tsx"),
     read("app/api/products/route.ts"),
+    read("app/api/documents/route.ts"),
     read("supabase/migrations/202607170004_product_parent_skus.sql"),
+    read("supabase/migrations/202607200003_parent_sku_delivery_validation.sql"),
     read("supabase/migrations/202607150001_inventory_reporting.sql"),
     read("lib/supabase-server.ts"),
   ]);
@@ -535,6 +537,9 @@ test("Parent SKUs map Invoice items to independent Child inventory without combi
   assert.match(productsApi, /parent_product_id: parentProductId/);
   assert.match(productsApi, /export async function PATCH/);
   assert.match(workflow, /product\.parent_product_id === item\.productId/);
+  assert.match(workflow, /Parent SKU detected\. Save Invoice Only/);
+  assert.match(workflow, /deliverableProducts\(reference\.products\)/);
+  assert.match(workflow, /validationError\(saveMode\)/);
   assert.match(workflow, /Please select a Child SKU for Parent SKU/);
   assert.match(workflow, /This Child SKU has already been added for the same Invoice item\./);
   assert.match(workflow, /group\.quantity > group\.remaining/);
@@ -544,6 +549,15 @@ test("Parent SKUs map Invoice items to independent Child inventory without combi
   assert.match(parentMigration, /child\.parent_product_id = invoice_item\.product_id/);
   assert.match(parentMigration, /group by invoice_item_id, product_id having count\(\*\) > 1/);
   assert.doesNotMatch(parentMigration, /update public\.products[\s\S]*current_stock/);
+  assert.match(documentsApi, /parentProductsInPayload/);
+  assert.match(documentsApi, /create_invoice_with_do_v10/);
+  assert.match(documentsApi, /create_delivery_order_only_v10/);
+  assert.match(documentsApi, /update_delivery_order_document_v10/);
+  assert.match(enforcementMigration, /assert_payload_has_no_parent_skus/);
+  assert.match(enforcementMigration, /perform public\.assert_payload_has_no_parent_skus\(p_payload, 'invoice_with_do'\)/);
+  assert.match(enforcementMigration, /return public\.create_invoice_with_do_v9\(p_payload\)/);
+  assert.match(enforcementMigration, /return public\.create_delivery_order_only_v9\(p_payload\)/);
+  assert.match(enforcementMigration, /perform public\.update_delivery_order_document_v9\(p_id, p_payload\)/);
   assert.match(inventoryMigration, /where id=i\.product_id/);
 });
 
