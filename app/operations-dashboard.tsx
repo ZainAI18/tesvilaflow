@@ -15,10 +15,22 @@ type Product = {
   current_stock: number;
   reserved_stock: number;
   minimum_stock: number;
+  linked_stock_product_id: string | null;
+  stock_owner_id: string;
+  stock_owner_sku: string;
+  stock_owner_model: string;
+  effective_opening_stock: number;
+  effective_current_stock: number;
+  effective_reserved_stock: number;
+  effective_minimum_stock: number;
 };
 type Movement = {
   id: string;
   product_id: string;
+  source_product_id: string | null;
+  stock_product_id: string | null;
+  source_sku: string | null;
+  stock_sku: string | null;
   movement_type: string;
   quantity: number;
   quantity_before: number | null;
@@ -29,7 +41,8 @@ type Movement = {
   remarks: string | null;
   active: boolean;
   created_at: string;
-  product: { sku: string; product_model: string } | null;
+  source_product: { sku: string; product_model: string } | null;
+  stock_product: { sku: string; product_model: string } | null;
   processed_by: { full_name: string } | null;
 };
 type InvoiceItem = {
@@ -166,14 +179,25 @@ export function InventoryOperations({
     movements = data?.movements || [];
   const selected =
     productId === "all" ? products : products.filter((p) => p.id === productId);
-  const ids = new Set(selected.map((p) => p.id));
-  const relevant = movements.filter((m) => ids.has(m.product_id));
+  const ownerIds = new Set(selected.map((p) => p.stock_owner_id));
+  const relevant = movements.filter((m) =>
+    ownerIds.has(m.stock_product_id || m.product_id),
+  );
+  const uniqueOwners = Array.from(
+    new Map(selected.map((p) => [p.stock_owner_id, p])).values(),
+  );
   const sum = (kind: string) =>
     relevant
       .filter((m) => m.movement_type === kind && m.active !== false)
       .reduce((s, m) => s + Math.abs(Number(m.quantity)), 0);
-  const opening = selected.reduce((s, p) => s + Number(p.opening_stock), 0),
-    current = selected.reduce((s, p) => s + Number(p.current_stock), 0),
+  const opening = uniqueOwners.reduce(
+      (s, p) => s + Number(p.effective_opening_stock),
+      0,
+    ),
+    current = uniqueOwners.reduce(
+      (s, p) => s + Number(p.effective_current_stock),
+      0,
+    ),
     incoming = sum("incoming"),
     returned = sum("returned"),
     damaged = sum("damaged"),
@@ -242,6 +266,7 @@ export function InventoryOperations({
                   <th>Product ID</th>
                   <th>SKU</th>
                   <th>Product</th>
+                  <th>Stock Owner</th>
                   <th>Opening</th>
                   <th>Current</th>
                   <th>Reserved</th>
@@ -262,17 +287,28 @@ export function InventoryOperations({
                         {p.product_type} · {p.brand}
                       </div>
                     </td>
-                    <td>{number(p.opening_stock)}</td>
                     <td>
-                      <b>{number(p.current_stock)}</b>
-                    </td>
-                    <td>{number(p.reserved_stock)}</td>
-                    <td>
-                      {number(
-                        Number(p.current_stock) - Number(p.reserved_stock),
+                      {p.linked_stock_product_id ? (
+                        <>
+                          <b>{p.stock_owner_sku}</b>
+                          <div className="muted">Shared Stock</div>
+                        </>
+                      ) : (
+                        <span className="muted">Uses own stock</span>
                       )}
                     </td>
-                    <td>{number(p.minimum_stock)}</td>
+                    <td>{number(p.effective_opening_stock)}</td>
+                    <td>
+                      <b>{number(p.effective_current_stock)}</b>
+                    </td>
+                    <td>{number(p.effective_reserved_stock)}</td>
+                    <td>
+                      {number(
+                        Number(p.effective_current_stock) -
+                          Number(p.effective_reserved_stock),
+                      )}
+                    </td>
+                    <td>{number(p.effective_minimum_stock)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -311,6 +347,7 @@ function MovementModal({
     [remarks, setRemarks] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const selectedProduct = products.find((product) => product.id === productId);
   async function submit() {
     setBusy(true);
     setError("");
@@ -372,6 +409,13 @@ function MovementModal({
                 <option value="returned">Returned</option>
               </select>
             </div>
+            {selectedProduct?.linked_stock_product_id && (
+              <div className="field" style={{ gridColumn: "span 2" }}>
+                <div className="muted">
+                  Stock will be applied to <b>{selectedProduct.stock_owner_sku}</b>.
+                </div>
+              </div>
+            )}
             <div className="field">
               <label>Quantity</label>
               <input
@@ -431,12 +475,15 @@ export function StockMovementHistory() {
     [search, setSearch] = useState("");
   const rows = (data?.movements || []).filter(
     (m) =>
-      (productId === "all" || m.product_id === productId) &&
+      (productId === "all" ||
+        m.source_product_id === productId ||
+        m.stock_product_id === productId ||
+        m.product_id === productId) &&
       (kind === "all" || m.movement_type === kind) &&
       (!start || m.created_at.slice(0, 10) >= start) &&
       (!end || m.created_at.slice(0, 10) <= end) &&
       (!search ||
-        `${m.product?.sku} ${m.product?.product_model} ${m.reference_number}`
+        `${m.source_sku} ${m.source_product?.product_model} ${m.stock_sku} ${m.stock_product?.product_model} ${m.reference_number}`
           .toLowerCase()
           .includes(search.toLowerCase())),
   );
@@ -461,8 +508,10 @@ export function StockMovementHistory() {
                 "stock-movement-history.xlsx",
                 rows.map((m) => ({
                   Date: m.created_at,
-                  Product: m.product?.product_model,
-                  SKU: m.product?.sku,
+                  SourceProduct: m.source_product?.product_model,
+                  SourceSKU: m.source_sku || m.source_product?.sku,
+                  StockProduct: m.stock_product?.product_model,
+                  StockSKU: m.stock_sku || m.stock_product?.sku,
                   Type: title(m.movement_type),
                   Quantity: m.quantity,
                   Before: m.quantity_before,
@@ -533,7 +582,8 @@ export function StockMovementHistory() {
               <thead>
                 <tr>
                   <th>Date & time</th>
-                  <th>Product / SKU</th>
+                  <th>Source Product / SKU</th>
+                  <th>Stock Product / SKU</th>
                   <th>Movement type</th>
                   <th>Quantity</th>
                   <th>Before</th>
@@ -549,8 +599,16 @@ export function StockMovementHistory() {
                   <tr key={m.id}>
                     <td>{new Date(m.created_at).toLocaleString("en-SG")}</td>
                     <td>
-                      {m.product?.product_model}
-                      <div className="muted">{m.product?.sku}</div>
+                      {m.source_product?.product_model || "—"}
+                      <div className="muted">
+                        {m.source_sku || m.source_product?.sku || "—"}
+                      </div>
+                    </td>
+                    <td>
+                      {m.stock_product?.product_model || "—"}
+                      <div className="muted">
+                        {m.stock_sku || m.stock_product?.sku || "—"}
+                      </div>
                     </td>
                     <td>
                       <span

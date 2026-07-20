@@ -463,6 +463,42 @@ test("Parent SKUs map Invoice items to independent Child inventory without combi
   assert.match(inventoryMigration, /where id=i\.product_id/);
 });
 
+test("Linked Stock Products share physical inventory without merging document SKUs", async () => {
+  const [productManager, productsApi, operationsApi, operationsPage, migration, workflow, database] =
+    await Promise.all([
+      read("app/product-manager.tsx"),
+      read("app/api/products/route.ts"),
+      read("app/api/operations/route.ts"),
+      read("app/operations-dashboard.tsx"),
+      read("supabase/migrations/202607200001_linked_stock_products.sql"),
+      read("app/document-workflow.tsx"),
+      read("lib/supabase-server.ts"),
+    ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(productManager, /Linked Stock Product/);
+  assert.match(productManager, /Use own stock/);
+  assert.match(productManager, /Shared Stock/);
+  assert.match(productManager, /Changing the Linked Stock Product will affect future inventory movements/);
+  assert.match(productsApi, /linked_stock_product_id: linkedStockProductId/);
+  assert.match(productsApi, /A product cannot be linked to itself/);
+  assert.match(productsApi, /main stock product that is not linked to another product/);
+  assert.match(operationsApi, /effective_current_stock/);
+  assert.match(operationsApi, /source_product:products!stock_movements_source_product_id_fkey/);
+  assert.match(operationsPage, /new Map\(selected\.map\(\(p\) => \[p\.stock_owner_id, p\]\)\)/);
+  assert.match(operationsPage, /Stock will be applied to/);
+  assert.match(operationsPage, /Source Product \/ SKU/);
+  assert.match(operationsPage, /Stock Product \/ SKU/);
+  assert.match(migration, /add column if not exists linked_stock_product_id uuid/);
+  assert.match(migration, /foreign key \(linked_stock_product_id\)[\s\S]*on delete restrict/);
+  assert.match(migration, /create or replace function public\.resolve_stock_product_id/);
+  assert.match(migration, /stock_id := public\.resolve_stock_product_id\(source_product\.id\)/);
+  assert.match(migration, /source_product_id,stock_product_id,source_sku,stock_sku/);
+  assert.match(migration, /A main stock product used by linked products cannot itself be linked/);
+  assert.match(migration, /Remove or change those links before deleting it/);
+  assert.doesNotMatch(workflow, /linked_stock_product_id/);
+});
+
 test("Monthly Sales Report combines item-level filters with a formatted XLSX export", async () => {
   const [page, route, exportRoute, reportLogic, workbook] = await Promise.all([
     read("app/operations-dashboard.tsx"),
