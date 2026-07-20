@@ -31,6 +31,7 @@ import {
   paginateInvoiceReportItems,
 } from "@/lib/invoice-report";
 import { createInvoicePdf } from "@/lib/invoice-pdf";
+import { fitPdfTextSize, wrapPdfText as wrap } from "@/lib/pdf-text-layout";
 import {
   sortCustomersByCustomerId,
   sortProductsByCodeAfterFirstT,
@@ -2439,23 +2440,6 @@ type PdfKit = {
   logo: PDFImage;
   pages: PDFPage[];
 };
-const textWidth = (font: PDFFont, size: number, s: string) =>
-  font.widthOfTextAtSize(s, size);
-function wrap(font: PDFFont, size: number, text: string, max: number) {
-  const words = (text || "—").split(/\s+/),
-    lines: string[] = [];
-  let line = "";
-  for (const word of words) {
-    const next = line ? `${line} ${word}` : word;
-    if (textWidth(font, size, next) <= max) line = next;
-    else {
-      if (line) lines.push(line);
-      line = word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines.length ? lines : ["—"];
-}
 function drawLines(
   page: PDFPage,
   font: PDFFont,
@@ -2548,7 +2532,8 @@ function companyHeader(
     font: kit.bold,
     color: TESVILA_BLUE,
   });
-  page.drawText(no, { x: 455, y: 760, size: 10, font: kit.bold, color: TESVILA_BLUE });
+  const numberSize = fitPdfTextSize(kit.bold, no, 104, 10, 8);
+  drawLines(page, kit.bold, numberSize, wrap(kit.bold, numberSize, no, 104), 455, 760, numberSize + 1, TESVILA_BLUE);
 }
 function doTableHead(kit: PdfKit, page: PDFPage, y: number) {
   page.drawRectangle({
@@ -2622,37 +2607,16 @@ function drawDeliveryOrderStaticFooter(
     thickness: 0.7,
     color: INK,
   });
-  page.drawText("Driver / Delivery Personnel", {
-    x: 36,
-    y: signatureY - 13,
-    size: 7,
-    font: kit.bold,
-  });
+  drawLines(page, kit.bold, 7, wrap(kit.bold, 7, "Driver / Delivery Personnel", 154), 36, signatureY - 13, 8);
   page.drawLine({
     start: { x: 350, y: signatureY },
     end: { x: 555, y: signatureY },
     thickness: 0.7,
     color: INK,
   });
-  page.drawText("Customer Signature", {
-    x: 350,
-    y: signatureY - 13,
-    size: 7,
-    font: kit.bold,
-  });
-  page.drawText("Received Date: ____________________", {
-    x: 350,
-    y: signatureY - 47,
-    size: 7,
-    font: kit.regular,
-  });
-  page.drawText(`Issued by: ${order.createdBy}`, {
-    x: 36,
-    y: signatureY - 47,
-    size: 7,
-    font: kit.bold,
-    color: INK,
-  });
+  drawLines(page, kit.bold, 7, wrap(kit.bold, 7, "Customer Signature", 205), 350, signatureY - 13, 8);
+  drawLines(page, kit.regular, 7, wrap(kit.regular, 7, "Received Date: ____________________", 205), 350, signatureY - 47, 8);
+  drawLines(page, kit.bold, 7, wrap(kit.bold, 7, `Issued by: ${order.createdBy}`, 154), 36, signatureY - 47, 8, INK);
 }
 
 export async function generateInvoicePdf(inv: InvoiceRecord) {
@@ -2697,16 +2661,20 @@ export async function generateDOPdf(order: DORecord) {
   doCustomerY -= doBillingLines.length * 10 + 12;
   const reportDeliveryContact = order.deliveryContact || order.customer.attention || "—";
   const reportDeliveryPhone = order.deliveryPhone || order.customer.phone || "—";
-  page.drawText(`Attn: ${order.customer.attention || "—"}`, { x: 36, y: doCustomerY, size: 8, font: regular, color: MUTED });
-  page.drawText(`HP No.: ${order.customer.phone || "—"}`, { x: 36, y: doCustomerY - 12, size: 8, font: regular, color: MUTED });
-  page.drawText(`Invoice No.: ${order.invoiceNumber || "—"}`, { x: 36, y: doCustomerY - 24, size: 8, font: regular, color: MUTED });
+  const billingDetailLines = [
+    ...wrap(regular, 8, `Attn: ${order.customer.attention || "—"}`, 245),
+    ...wrap(regular, 8, `HP No.: ${order.customer.phone || "—"}`, 245),
+    ...wrap(regular, 8, `Invoice No.: ${order.invoiceNumber || "—"}`, 245),
+  ];
+  drawLines(page, regular, 8, billingDetailLines, 36, doCustomerY, 10, MUTED);
+  doCustomerY -= billingDetailLines.length * 10;
 
   const deliveryInformation = [
-    ["DO No.", [order.doNumber]],
+    ["DO No.", wrap(regular, 8, order.doNumber, 125)],
     ["Delivery Address", wrap(regular, 8, order.deliveryAddress || order.customer.deliveryAddress || "—", 125)],
     ["Contact Person", wrap(regular, 8, reportDeliveryContact, 125)],
     ["Contact Number", wrap(regular, 8, reportDeliveryPhone, 125)],
-    ["DO Date", [date(order.deliveryDate)]],
+    ["DO Date", wrap(regular, 8, date(order.deliveryDate), 125)],
   ] as const;
   let deliveryInformationY = 720;
   deliveryInformation.forEach(([label, values]) => {
@@ -2744,10 +2712,12 @@ export async function generateDOPdf(order: DORecord) {
     drawLines(page, regular, 7.2, wrap(regular, 7.2, item.sku, 54), 42, y - 10, 9);
     drawLines(page, bold, 7.2, wrap(bold, 7.2, item.model, 75), 105, y - 10, 9);
     drawLines(page, regular, 7.2, details, 190, y - 10, 9);
-    page.drawText(String(item.quantity), {
+    const quantityText = String(item.quantity);
+    const quantitySize = fitPdfTextSize(bold, quantityText, 27, 8, 7);
+    page.drawText(quantityText, {
       x: 445,
       y: y - 10,
-      size: 8,
+      size: quantitySize,
       font: bold,
     });
     drawLines(page, regular, 7, remarks, 475, y - 10, 9);
@@ -2781,13 +2751,7 @@ export async function generateDOPdf(order: DORecord) {
     font: bold,
     color: TESVILA_BLUE,
   });
-  page.drawText(itemCollectLabel(order.itemCollectMethod), {
-    x: 465,
-    y: y - 15,
-    size: 7,
-    font: regular,
-    color: INK,
-  });
+  drawLines(page, regular, 7, wrap(regular, 7, itemCollectLabel(order.itemCollectMethod), 94), 465, y - 15, 8, INK);
   drawLines(
     page,
     regular,

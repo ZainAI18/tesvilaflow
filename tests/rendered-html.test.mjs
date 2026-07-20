@@ -403,7 +403,7 @@ test("Delivery Order contacts remain separate from Invoice and customer contacts
   assert.match(workflow, /\["Delivery Address", wrap\(regular, 8, order\.deliveryAddress/);
   assert.match(workflow, /\["Contact Person", wrap\(regular, 8, reportDeliveryContact/);
   assert.match(workflow, /\["Contact Number", wrap\(regular, 8, reportDeliveryPhone/);
-  assert.match(workflow, /\["DO Date", \[date\(order\.deliveryDate\)\]\]/);
+  assert.match(workflow, /\["DO Date", wrap\(regular, 8, date\(order\.deliveryDate\), 125\)\]/);
   assert.match(css, /\.document-delivery-contact-row/);
   assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(documentsApi, /delivery_contact_person,delivery_contact_number/);
@@ -559,6 +559,30 @@ test("Parent SKUs are Invoice-only and Delivery Orders require physical Child SK
   assert.match(enforcementMigration, /return public\.create_delivery_order_only_v9\(p_payload\)/);
   assert.match(enforcementMigration, /perform public\.update_delivery_order_document_v9\(p_id, p_payload\)/);
   assert.match(inventoryMigration, /where id=i\.product_id/);
+});
+
+test("Invoice and Delivery Order reports safely wrap long text without collisions", async () => {
+  const [workflow, pdf, layout, css, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("lib/invoice-pdf.ts"),
+    read("lib/pdf-text-layout.ts"),
+    read("app/globals.css"),
+    read("lib/supabase-server.ts"),
+  ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(layout, /export function wrapPdfText/);
+  assert.match(layout, /for \(const character of token\)/);
+  assert.match(layout, /export function fitPdfTextSize/);
+  assert.match(workflow, /wrapPdfText as wrap/);
+  assert.match(workflow, /billingDetailLines/);
+  assert.match(workflow, /fitPdfTextSize\(bold, quantityText/);
+  assert.match(pdf, /wrapPdfText as wrap/);
+  assert.match(pdf, /rightAlignedPdfX/);
+  assert.match(pdf, /deliveryLines\.flatMap/);
+  assert.match(css, /\.invoice-report-page[^}]*overflow-wrap: anywhere/);
+  assert.match(css, /\.invoice-item-report-table th, \.invoice-item-report-table td[^}]*white-space: normal/);
+  assert.match(css, /\.invoice-terms-row[^}]*page-break-inside: avoid/);
 });
 
 test("Linked Stock Products share physical inventory without merging document SKUs", async () => {

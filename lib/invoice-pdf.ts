@@ -7,6 +7,11 @@ import {
   rgb,
 } from "pdf-lib";
 import type { InvoiceReportData, InvoiceReportItem } from "./invoice-report";
+import {
+  fitPdfTextSize,
+  rightAlignedPdfX,
+  wrapPdfText as wrap,
+} from "./pdf-text-layout";
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -32,41 +37,6 @@ const money = (value: number) =>
     /\B(?=(\d{3})+(?!\d))/g,
     ",",
   );
-
-function wrap(font: PDFFont, size: number, value: string, width: number) {
-  const paragraphs = (value || "").split(/\r?\n/);
-  const lines: string[] = [];
-  paragraphs.forEach((paragraph) => {
-    const words = paragraph.split(/\s+/).filter(Boolean);
-    if (!words.length) {
-      lines.push("");
-      return;
-    }
-    let line = "";
-    words.forEach((word) => {
-      const candidate = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(candidate, size) <= width) {
-        line = candidate;
-        return;
-      }
-      if (line) lines.push(line);
-      if (font.widthOfTextAtSize(word, size) <= width) {
-        line = word;
-        return;
-      }
-      let fragment = "";
-      for (const character of word) {
-        if (font.widthOfTextAtSize(fragment + character, size) > width) {
-          if (fragment) lines.push(fragment);
-          fragment = character;
-        } else fragment += character;
-      }
-      line = fragment;
-    });
-    if (line) lines.push(line);
-  });
-  return lines;
-}
 
 function drawTextLines(
   page: PDFPage,
@@ -164,12 +134,13 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
   const deliveryLines = data.deliveryOrders.length
     ? data.deliveryOrders.map((order) => `${order.number} - ${order.date}`)
     : ["-"];
+  const valueWidth = infoWidth - labelWidth - 10;
   const rows = [
-    ["Invoice No.", [data.invoiceNumber]],
-    ["PO No.", [data.poNumber]],
+    ["Invoice No.", wrap(bold, 8.2, data.invoiceNumber, valueWidth)],
+    ["PO No.", wrap(regular, 8.2, data.poNumber, valueWidth)],
     ["DO No.", wrap(regular, 8.2, data.doNumbers, infoWidth - labelWidth - 10)],
-    ["Issued Date", [data.issuedDate]],
-    ["Delivery Date", deliveryLines],
+    ["Issued Date", wrap(regular, 8.2, data.issuedDate, valueWidth)],
+    ["Delivery Date", deliveryLines.flatMap((value) => wrap(regular, 8.2, value, valueWidth))],
   ] as const;
   let infoCursor = 726;
   rows.forEach(([label, values]) => {
@@ -221,8 +192,8 @@ function drawMainHeader(kit: Kit, page: PDFPage, data: InvoiceReportData) {
   const customerLines = [
     ...wrap(bold, 10.5, data.customer.companyName, 260),
     ...wrap(regular, 8.5, data.customer.address, 260),
-    `Contact Name: ${data.customer.contactName}`,
-    `Contact Number: ${data.customer.contactNumber}`,
+    ...wrap(regular, 8.5, `Contact Name: ${data.customer.contactName}`, 260),
+    ...wrap(regular, 8.5, `Contact Number: ${data.customer.contactNumber}`, 260),
   ];
   customerLines.forEach((line, index) =>
     page.drawText(line, {
@@ -247,13 +218,7 @@ function drawContinuationHeader(kit: Kit, page: PDFPage, data: InvoiceReportData
     font: kit.bold,
     color: BLUE,
   });
-  page.drawText(`Invoice No.: ${data.invoiceNumber}`, {
-    x: 398,
-    y: 808,
-    size: 10,
-    font: kit.bold,
-    color: BLUE,
-  });
+  drawTextLines(page, kit.bold, wrap(kit.bold, 10, `Invoice No.: ${data.invoiceNumber}`, 163), 398, 808, 10, 11, BLUE);
   page.drawText(`Co./GST Reg.No. ${data.company.registrationNumber}`, {
     x: MARGIN,
     y: 791,
@@ -261,13 +226,7 @@ function drawContinuationHeader(kit: Kit, page: PDFPage, data: InvoiceReportData
     font: kit.regular,
     color: BLACK,
   });
-  page.drawText(`Customer: ${data.customer.companyName}`, {
-    x: 250,
-    y: 791,
-    size: 8.5,
-    font: kit.regular,
-    color: BLACK,
-  });
+  drawTextLines(page, kit.regular, wrap(kit.regular, 8.5, `Customer: ${data.customer.companyName}`, 311), 250, 791, 8.5, 9.5, BLACK);
   page.drawLine({
     start: { x: MARGIN, y: 780 },
     end: { x: A4_WIDTH - MARGIN, y: 780 },
@@ -283,7 +242,8 @@ function drawSectionTitle(
   data: InvoiceReportData,
   topY: number,
 ) {
-  const height = 24;
+  const titleLines = wrap(kit.bold, 10.5, data.sectionTitle, CONTENT_WIDTH - 16);
+  const height = Math.max(24, titleLines.length * 12 + 10);
   page.drawRectangle({
     x: MARGIN,
     y: topY - height,
@@ -293,13 +253,15 @@ function drawSectionTitle(
     borderWidth: 0.65,
   });
   const size = 10.5;
-  const textWidth = kit.bold.widthOfTextAtSize(data.sectionTitle, size);
-  page.drawText(data.sectionTitle, {
-    x: MARGIN + (CONTENT_WIDTH - textWidth) / 2,
-    y: topY - 16,
-    size,
-    font: kit.bold,
-    color: BLUE,
+  titleLines.forEach((titleLine, index) => {
+    const textWidth = kit.bold.widthOfTextAtSize(titleLine, size);
+    page.drawText(titleLine, {
+      x: MARGIN + (CONTENT_WIDTH - textWidth) / 2,
+      y: topY - 16 - index * 12,
+      size,
+      font: kit.bold,
+      color: BLUE,
+    });
   });
   return topY - height;
 }
@@ -408,17 +370,21 @@ function drawItemRow(
     font: kit.regular,
     color: BLACK,
   });
-  page.drawText(money(item.unitPrice), {
-    x: columns.unitPrice.x + 5,
+  const unitPrice = money(item.unitPrice);
+  const unitPriceSize = fitPdfTextSize(kit.regular, unitPrice, columns.unitPrice.width - 10, 8, 7);
+  page.drawText(unitPrice, {
+    x: rightAlignedPdfX(kit.regular, unitPrice, unitPriceSize, columns.unitPrice.x, columns.unitPrice.width),
     y: topY - 15,
-    size: 8,
+    size: unitPriceSize,
     font: kit.regular,
     color: BLACK,
   });
-  page.drawText(money(item.amount), {
-    x: columns.amount.x + 5,
+  const amount = money(item.amount);
+  const amountSize = fitPdfTextSize(kit.bold, amount, columns.amount.width - 10, 8, 7);
+  page.drawText(amount, {
+    x: rightAlignedPdfX(kit.bold, amount, amountSize, columns.amount.x, columns.amount.width),
     y: topY - 15,
-    size: 8,
+    size: amountSize,
     font: kit.bold,
     color: BLACK,
   });
@@ -490,10 +456,11 @@ function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: numb
     font: bold,
     color: BLUE,
   });
+  const collectMethodSize = fitPdfTextSize(bold, data.itemCollectMethod, 131, 9.5, 8);
   page.drawText(data.itemCollectMethod, {
     x: MARGIN + 8,
     y: boxTop - 31,
-    size: 9.5,
+    size: collectMethodSize,
     font: bold,
     color: BLACK,
   });
@@ -510,10 +477,11 @@ function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: numb
     font: bold,
     color: BLUE,
   });
+  const paymentMethodSize = fitPdfTextSize(bold, data.paymentMethod, 132, 9.5, 8);
   page.drawText(data.paymentMethod, {
     x: MARGIN + 158,
     y: boxTop - 31,
-    size: 9.5,
+    size: paymentMethodSize,
     font: bold,
     color: BLACK,
   });
@@ -551,10 +519,12 @@ function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: numb
       font: index >= 2 ? bold : regular,
       color: BLACK,
     });
-    page.drawText(money(value), {
-      x: totalsX + 92,
+    const formattedValue = money(value);
+    const valueSize = fitPdfTextSize(index >= 2 ? bold : regular, formattedValue, totalsWidth - 99, 8, 7);
+    page.drawText(formattedValue, {
+      x: rightAlignedPdfX(index >= 2 ? bold : regular, formattedValue, valueSize, totalsX + 85, totalsWidth - 85),
       y,
-      size: 8,
+      size: valueSize,
       font: index >= 2 ? bold : regular,
       color: index === 4 ? BLUE : BLACK,
     });
@@ -591,13 +561,8 @@ function drawFooter(kit: Kit, page: PDFPage, data: InvoiceReportData, topY: numb
     font: bold,
     color: BLUE,
   });
-  page.drawText(`Issued By: ${data.issuedBy}`, {
-    x: 425,
-    y: 22,
-    size: 11.5,
-    font: bold,
-    color: BLACK,
-  });
+  const issuedByLines = wrap(bold, 11.5, `Issued By: ${data.issuedBy}`, 136);
+  drawTextLines(page, bold, issuedByLines, 425, 22 + Math.max(0, issuedByLines.length - 1) * 12, 11.5, 12, BLACK);
 }
 
 
