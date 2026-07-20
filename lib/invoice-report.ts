@@ -1,4 +1,10 @@
 import { invoiceItemLineAmount } from "./invoice-discount";
+import {
+  calculateInvoiceTotals,
+  gstModeLabel,
+  inferGstMode,
+  type GstMode,
+} from "./invoice-totals";
 
 export const TESVILA_COMPANY = {
   name: "Tesvila Pte Ltd",
@@ -62,6 +68,7 @@ export type InvoiceReportSource = {
   remarks?: string;
   createdBy?: string;
   gstRate?: number;
+  gstMode?: GstMode;
   deposit?: number;
   subtotal?: number;
   gstAmount?: number;
@@ -79,6 +86,7 @@ export type InvoiceReportItem = {
   description: string;
   quantity: number;
   unitPrice: number;
+  discount: number;
   amount: number;
 };
 
@@ -125,6 +133,7 @@ export function buildInvoiceReportData(invoice: InvoiceReportSource) {
     description: safeText(item.description),
     quantity: safeNumber(item.quantity, 0),
     unitPrice: safeNumber(item.unitPrice, 0),
+    discount: safeNumber(item.discount, 0),
     amount: invoiceItemLineAmount({
       ...item,
       quantity: safeNumber(item.quantity, 0),
@@ -132,20 +141,11 @@ export function buildInvoiceReportData(invoice: InvoiceReportSource) {
       discount: safeNumber(item.discount, 0),
     }),
   }));
-  const calculatedSubtotal = invoice.items.reduce(
-    (sum, item) =>
-      sum +
-      invoiceItemLineAmount({
-        ...item,
-        quantity: safeNumber(item.quantity, 0),
-        unitPrice: safeNumber(item.unitPrice, 0),
-        discount: safeNumber(item.discount, 0),
-      }),
-    0,
-  );
-  const gstRate = safeNumber(invoice.gstRate, 9);
-  const subtotal = safeNumber(invoice.subtotal, calculatedSubtotal);
-  const gstAmount = safeNumber(invoice.gstAmount, subtotal * gstRate / 100);
+  const gstMode = inferGstMode(invoice.gstMode, invoice);
+  const calculatedTotals = calculateInvoiceTotals(items, gstMode);
+  const gstRate = safeNumber(invoice.gstRate, calculatedTotals.gstRate);
+  const subtotal = safeNumber(invoice.subtotal, calculatedTotals.subtotal);
+  const gstAmount = safeNumber(invoice.gstAmount, calculatedTotals.gstAmount);
   const grandTotal = safeNumber(invoice.grandTotal, subtotal + gstAmount);
   const deposit = safeNumber(invoice.deposit, 0);
   const balance = safeNumber(invoice.balance, grandTotal - deposit);
@@ -194,7 +194,16 @@ export function buildInvoiceReportData(invoice: InvoiceReportSource) {
           : invoice.paymentMethod === "terms"
             ? "Terms"
             : "-",
-    totals: { subtotal, gstRate, gstAmount, grandTotal, deposit, balance },
+    totals: {
+      subtotal,
+      gstMode,
+      gstLabel: gstModeLabel(gstMode),
+      gstRate,
+      gstAmount,
+      grandTotal,
+      deposit,
+      balance,
+    },
     terms: [...INVOICE_TERMS],
     issuedBy: safeText(invoice.createdBy, "-"),
   };

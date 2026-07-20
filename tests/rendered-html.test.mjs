@@ -127,7 +127,7 @@ test("invoice and delivery-order method dropdowns persist through constrained da
   assert.match(workflow, /itemCollectLabel\(order\.itemCollectMethod\)/);
   assert.match(report, /invoice\.paymentMethod === "paynow"/);
   assert.match(report, /invoice\.paymentMethod === "terms"/);
-  assert.match(documentsApi, /create_invoice_with_do_v10/);
+  assert.match(documentsApi, /create_invoice_with_do_v11/);
   assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(migration, /item_collect_method in \('delivery','self_collect'\)/);
   assert.match(migration, /payment_method in \('paynow','cash','terms'\)/);
@@ -143,8 +143,8 @@ test("item descriptions are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "description", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "description", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /readOnly value=\{row\.description\}/);
-  assert.match(documentsApi, /create_invoice_with_do_v10/);
-  assert.match(documentsApi, /update_invoice_document_v8/);
+  assert.match(documentsApi, /create_invoice_with_do_v11/);
+  assert.match(documentsApi, /update_invoice_document_v9/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
   assert.match(migration, /update public\.delivery_order_items as stored_item/);
   assert.match(migration, /with ordinality as payload_item/);
@@ -159,7 +159,7 @@ test("item brands are editable document snapshots", async () => {
   assert.match(workflow, /update\(row\.id, "brand", e\.target\.value\)/);
   assert.match(workflow, /setItem\(i\.id, "brand", e\.target\.value\)/);
   assert.doesNotMatch(workflow, /updated\(row\.id, "brand"/);
-  assert.match(documentsApi, /create_invoice_with_do_v10/);
+  assert.match(documentsApi, /create_invoice_with_do_v11/);
   assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(migration, /set brand = coalesce\(payload_item\.value->>'brand', ''\)/);
   assert.match(migration, /update public\.invoice_items as stored_item/);
@@ -214,7 +214,7 @@ test("Invoice Only saves transactionally without creating a Delivery Order or st
   assert.match(workflow, /saving === "invoice-only"/);
   assert.match(workflow, /\(!invoice \|\| !!inv\.doId\)/);
   assert.match(documentsApi, /"invoice_only"/);
-  assert.match(documentsApi, /create_invoice_only_v8/);
+  assert.match(documentsApi, /create_invoice_only_v9/);
   assert.match(migration, /delivery_orders_one_active_invoice_unique/);
   assert.match(migration, /This Invoice already has a linked Delivery Order\./);
   assert.match(invoiceOnlyFunction, /insert into public\.invoices/);
@@ -407,7 +407,7 @@ test("Delivery Order contacts remain separate from Invoice and customer contacts
   assert.match(css, /\.document-delivery-contact-row/);
   assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(documentsApi, /delivery_contact_person,delivery_contact_number/);
-  assert.match(documentsApi, /create_invoice_with_do_v10/);
+  assert.match(documentsApi, /create_invoice_with_do_v11/);
   assert.match(documentsApi, /create_delivery_order_only_v10/);
   assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(migration, /add column if not exists delivery_contact_person text/);
@@ -465,9 +465,9 @@ test("Delivery Order PDF uses the Invoice blue theme and Invoice title is editab
   assert.match(workflow, /titleOfInvoice: titleOfInvoice\.trim\(\) \|\| "Supply Sanitary Ware"/);
   assert.match(report, /sectionTitle: safeText\(invoice\.titleOfInvoice, "Supply Sanitary Ware"\)/);
   assert.match(documentsApi, /invoice_title/);
-  assert.match(documentsApi, /create_invoice_with_do_v10/);
-  assert.match(documentsApi, /create_invoice_only_v8/);
-  assert.match(documentsApi, /update_invoice_document_v8/);
+  assert.match(documentsApi, /create_invoice_with_do_v11/);
+  assert.match(documentsApi, /create_invoice_only_v9/);
+  assert.match(documentsApi, /update_invoice_document_v9/);
   assert.match(migration, /add column if not exists invoice_title text/);
   assert.match(migration, /create_invoice_with_do_v8\(p_payload\)/);
   assert.match(migration, /create_invoice_only_v7\(p_payload\)/);
@@ -550,7 +550,7 @@ test("Parent SKUs are Invoice-only and Delivery Orders require physical Child SK
   assert.match(parentMigration, /group by invoice_item_id, product_id having count\(\*\) > 1/);
   assert.doesNotMatch(parentMigration, /update public\.products[\s\S]*current_stock/);
   assert.match(documentsApi, /parentProductsInPayload/);
-  assert.match(documentsApi, /create_invoice_with_do_v10/);
+  assert.match(documentsApi, /create_invoice_with_do_v11/);
   assert.match(documentsApi, /create_delivery_order_only_v10/);
   assert.match(documentsApi, /update_delivery_order_document_v10/);
   assert.match(enforcementMigration, /assert_payload_has_no_parent_skus/);
@@ -711,4 +711,40 @@ test("Invoice discounts use percentage input while Supabase keeps discount amoun
   assert.match(report, /invoiceItemLineAmount/);
   assert.match(css, /\.percentage-input/);
   assert.doesNotMatch(documentsApi, /discount_percent/);
+});
+
+test("Invoice reports show percentage discounts and support GST 9% or Included", async () => {
+  const [workflow, documentsApi, totals, report, pdf, css, migration, database] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/api/documents/route.ts"),
+    read("lib/invoice-totals.ts"),
+    read("lib/invoice-report.ts"),
+    read("lib/invoice-pdf.ts"),
+    read("app/globals.css"),
+    read("supabase/migrations/202607200004_invoice_gst_mode.sql"),
+    read("lib/supabase-server.ts"),
+  ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(workflow, /<option value="gst_9">GST 9%<\/option>/);
+  assert.match(workflow, /<option value="included">Included<\/option>/);
+  assert.match(workflow, /calculateInvoiceTotals\(items, gstMode\)/);
+  assert.match(workflow, /<th>Unit Price<\/th><th>Discount<\/th><th>Amount<\/th>/);
+  assert.match(workflow, /formatDiscountPercent\(item\.discount\)/);
+  assert.match(documentsApi, /gst_mode,gst_rate,subtotal,gst_amount,grand_total/);
+  assert.match(documentsApi, /create_invoice_with_do_v11/);
+  assert.match(documentsApi, /create_invoice_only_v9/);
+  assert.match(documentsApi, /update_invoice_document_v9/);
+  assert.match(totals, /gstMode === "gst_9" \? roundCurrency\(subtotal \* 0\.09\) : 0/);
+  assert.match(totals, /grandTotal: roundCurrency\(subtotal \+ gstAmount\)/);
+  assert.match(totals, /mode === "included" \? "GST Included" : "GST 9%"/);
+  assert.match(report, /discount: safeNumber\(item\.discount, 0\)/);
+  assert.match(report, /gstLabel: gstModeLabel\(gstMode\)/);
+  assert.match(pdf, /\["Discount", columns\.discount\]/);
+  assert.match(pdf, /formatDiscountPercent\(item\.discount\)/);
+  assert.match(pdf, /data\.totals\.gstLabel/);
+  assert.match(css, /nth-child\(5\).*width: 10%/);
+  assert.match(migration, /check \(gst_mode is null or gst_mode in \('gst_9', 'included'\)\)/);
+  assert.match(migration, /case when mode = 'gst_9' then 9 else 0 end/);
+  assert.match(migration, /Please select a valid GST option\./);
 });
