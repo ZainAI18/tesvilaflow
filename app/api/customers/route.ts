@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth-session";
 import { createServerDatabase } from "@/lib/supabase-server";
+import { sortCustomersByCustomerId } from "@/lib/record-sorting";
 
 function database() {
   return createServerDatabase();
@@ -35,8 +36,7 @@ export async function GET(request: NextRequest) {
       updated_at
       `,
     )
-    .is("deleted_at", null)
-    .order("company_name", { ascending: true });
+    .is("deleted_at", null);
 
   if (error) {
     return NextResponse.json(
@@ -57,7 +57,7 @@ const databaseProject =
 
 return NextResponse.json({
   databaseProject,
-  customers: data ?? [],
+  customers: sortCustomersByCustomerId(data ?? []),
 });
 }
 

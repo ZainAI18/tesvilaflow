@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth-session";
 import { createServerDatabase } from "@/lib/supabase-server";
+import { sortProductsByCodeAfterFirstT } from "@/lib/record-sorting";
 
 function database() {
   return createServerDatabase();
@@ -60,8 +61,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await db
     .from("products")
     .select("*")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
+    .is("deleted_at", null);
 
   if (error) {
     return NextResponse.json(
@@ -70,7 +70,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ products: withStockOwners((data || []) as ProductRow[]) });
+  return NextResponse.json({
+    products: sortProductsByCodeAfterFirstT(
+      withStockOwners((data || []) as ProductRow[]),
+    ),
+  });
 }
 
 export async function POST(request: NextRequest) {
