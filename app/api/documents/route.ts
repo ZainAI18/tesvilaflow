@@ -250,6 +250,22 @@ export async function DELETE(req: NextRequest) {
       { error: "Unknown document type" },
       { status: 400 },
     );
+  if (body.type === "invoice") {
+    const { data, error } = await db.rpc("delete_invoice_with_dependencies", {
+      p_invoice_id: body.id,
+      p_deleted_by: auth.session.userId,
+    });
+    if (error)
+      return NextResponse.json(
+        {
+          error:
+            "Unable to delete the Invoice and its related records. No changes were completed.",
+        },
+        { status: 400 },
+      );
+    return NextResponse.json(data || { ok: true });
+  }
+
   const { error } = await db.rpc("soft_delete_document", {
     p_type: body.type,
     p_id: body.id,

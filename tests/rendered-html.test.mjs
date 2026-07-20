@@ -233,6 +233,41 @@ test("linked Delivery Orders are deleted only through their parent Invoice", asy
   assert.match(migration, /deleted_with_parent_invoice/);
 });
 
+test("Invoice hard deletion cascades in Supabase and restores saved physical stock once", async () => {
+  const [workflow, documentsApi, operationsPage, dashboard, migration, database] =
+    await Promise.all([
+      read("app/document-workflow.tsx"),
+      read("app/api/documents/route.ts"),
+      read("app/operations-dashboard.tsx"),
+      read("app/dashboard-manager.tsx"),
+      read("supabase/migrations/202607200002_invoice_hard_delete.sql"),
+      read("lib/supabase-server.ts"),
+    ]);
+
+  assert.match(database, /fnkkeadpkjshsnjmoznl/);
+  assert.match(documentsApi, /delete_invoice_with_dependencies/);
+  assert.match(documentsApi, /Unable to delete the Invoice and its related records/);
+  assert.match(workflow, /permanently delete all related Delivery Orders, Delivery Order Items and Stock Movement records/);
+  assert.match(workflow, /window\.addEventListener\("focus", refetch\)/);
+  assert.match(workflow, /This record no longer exists\./);
+  assert.match(operationsPage, /window\.addEventListener\("focus", refetch\)/);
+  assert.match(dashboard, /window\.addEventListener\("focus", refetch\)/);
+  assert.match(migration, /create or replace function public\.delete_invoice_with_dependencies/);
+  assert.match(migration, /create or replace function public\.restore_invoice_inventory_before_delete/);
+  assert.match(migration, /before delete on public\.invoices/);
+  assert.match(migration, /before delete on public\.delivery_orders/);
+  assert.match(migration, /coalesce\(stock_movement\.stock_product_id, stock_movement\.product_id\)/);
+  assert.match(migration, /current_stock = current_stock \+ abs\(movement\.quantity\)/);
+  assert.match(migration, /stock_movement\.active/);
+  assert.match(migration, /stock_movement\.reversed_at is null/);
+  assert.match(migration, /foreign key\(invoice_id\) references public\.invoices\(id\) on delete cascade/);
+  assert.match(migration, /foreign key\(delivery_order_id\) references public\.delivery_orders\(id\) on delete cascade/);
+  assert.match(migration, /foreign key\(source_item_id\) references public\.delivery_order_items\(id\) on delete cascade/);
+  assert.match(migration, /foreign key\(reversal_of\) references public\.stock_movements\(id\) on delete cascade/);
+  assert.match(migration, /delete from public\.invoices where id = p_invoice_id/);
+  assert.match(migration, /invoice_hard_deleted/);
+});
+
 test("administration pages are removed without changing authentication or company document details", async () => {
   const [shell, login, workflow] = await Promise.all([
     read("app/tesvila-app.tsx"),
