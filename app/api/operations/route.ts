@@ -31,14 +31,14 @@ export async function GET(req: NextRequest) {
     db
       .from("products")
       .select(
-        "id,sku,product_model,product_type,brand,opening_stock,current_stock,reserved_stock,minimum_stock",
+        "id,sku,product_model,product_type,brand,opening_stock,current_stock,reserved_stock,minimum_stock,linked_stock_product_id",
       )
       .is("deleted_at", null)
       .order("product_model"),
     db
       .from("stock_movements")
       .select(
-        "id,product_id,movement_type,quantity,quantity_before,quantity_after,balance_after,reference_type,reference_number,remarks,active,created_at,product:products(sku,product_model),processed_by:users(full_name)",
+        "id,product_id,source_product_id,stock_product_id,source_sku,stock_sku,movement_type,quantity,quantity_before,quantity_after,balance_after,reference_type,reference_number,remarks,active,created_at,source_product:products!stock_movements_source_product_id_fkey(sku,product_model),stock_product:products!stock_movements_stock_product_id_fkey(sku,product_model),processed_by:users(full_name)",
       )
       .order("created_at", { ascending: false })
       .limit(1000),
@@ -79,8 +79,25 @@ export async function GET(req: NextRequest) {
       gross_profit: netSales - cost,
     };
   });
+  const productRows = products || [];
+  const productById = new Map(productRows.map((product: any) => [product.id, product]));
+  const inventoryProducts = productRows.map((product: any) => {
+    const owner = product.linked_stock_product_id
+      ? productById.get(product.linked_stock_product_id)
+      : product;
+    return {
+      ...product,
+      stock_owner_id: owner?.id || product.id,
+      stock_owner_sku: owner?.sku || product.sku,
+      stock_owner_model: owner?.product_model || product.product_model,
+      effective_opening_stock: Number(owner?.opening_stock ?? product.opening_stock),
+      effective_current_stock: Number(owner?.current_stock ?? product.current_stock),
+      effective_reserved_stock: Number(owner?.reserved_stock ?? product.reserved_stock),
+      effective_minimum_stock: Number(owner?.minimum_stock ?? product.minimum_stock),
+    };
+  });
   return NextResponse.json({
-    products,
+    products: inventoryProducts,
     movements,
     invoices: sales,
     start,

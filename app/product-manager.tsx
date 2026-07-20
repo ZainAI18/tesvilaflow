@@ -18,6 +18,16 @@ type Product = {
   reserved_stock: number;
   minimum_stock: number;
   parent_product_id: string | null;
+  linked_stock_product_id: string | null;
+  stock_owner: {
+    id: string;
+    sku: string;
+    product_model: string;
+    description: string;
+    brand: string;
+  } | null;
+  effective_current_stock: number;
+  effective_minimum_stock: number;
 };
 
 type ProductForm = {
@@ -31,6 +41,7 @@ type ProductForm = {
   openingStock: string;
   minimumStock: string;
   parentProductId: string;
+  linkedStockProductId: string;
 };
 
 const emptyForm: ProductForm = {
@@ -44,6 +55,7 @@ const emptyForm: ProductForm = {
   openingStock: "0",
   minimumStock: "0",
   parentProductId: "",
+  linkedStockProductId: "",
 };
 
 const money = (value: number) =>
@@ -158,6 +170,41 @@ export function ProductManager({
     }
   }
 
+  async function updateLinkedStockProduct(
+    product: Product,
+    linkedStockProductId: string,
+  ) {
+    if (linkedStockProductId === product.linked_stock_product_id) return;
+    if (
+      !window.confirm(
+        "Changing the Linked Stock Product will affect future inventory movements. Existing historical stock movements will remain unchanged. Continue?",
+      )
+    ) return;
+
+    try {
+      const response = await authFetch("/api/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: product.id,
+          linkedStockProductId: linkedStockProductId || null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error || "Unable to update Linked Stock Product");
+      await loadProducts();
+      notify("Linked Stock Product updated successfully");
+    } catch (error) {
+      notify(
+        error instanceof Error
+          ? error.message
+          : "Unable to update Linked Stock Product",
+      );
+      await loadProducts();
+    }
+  }
+
   const filteredProducts = products.filter((product) =>
     (
       product.product_model +
@@ -204,6 +251,7 @@ export function ProductManager({
                 <th>Model / SKU</th>
                 <th>Product Type</th>
                 <th>Parent SKU</th>
+                <th>Linked Stock Product</th>
                 <th>Brand</th>
                 <th>Description</th>
                 <th>Cost</th>
@@ -216,7 +264,7 @@ export function ProductManager({
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9}>Loading products...</td>
+                  <td colSpan={10}>Loading products...</td>
                 </tr>
               ) : (
                 filteredProducts.map((product) => (
@@ -241,6 +289,18 @@ export function ProductManager({
                           ))}
                       </select>
                     </td>
+                    <td>
+                      <LinkedStockProductInput
+                        key={`${product.id}-${product.linked_stock_product_id || "own"}`}
+                        productId={product.id}
+                        value={product.linked_stock_product_id || ""}
+                        products={products}
+                        onChange={(value) =>
+                          void updateLinkedStockProduct(product, value)
+                        }
+                        ariaLabel={`Linked Stock Product for ${product.sku}`}
+                      />
+                    </td>
                     <td>{product.brand}</td>
                     <td>{product.description}</td>
                     <td>{money(Number(product.cost_price))}</td>
@@ -250,16 +310,19 @@ export function ProductManager({
                     <td>
                       <span
                         className={`status ${
-                          Number(product.current_stock) <=
-                          Number(product.minimum_stock)
+                          Number(product.effective_current_stock) <=
+                          Number(product.effective_minimum_stock)
                             ? "red"
                             : ""
                         }`}
                       >
-                        {Number(product.current_stock)} units
+                        {Number(product.effective_current_stock)} units
                       </span>
+                      {product.linked_stock_product_id && (
+                        <div className="muted">Shared Stock</div>
+                      )}
                     </td>
-                    <td>{Number(product.minimum_stock)}</td>
+                    <td>{Number(product.effective_minimum_stock)}</td>
                   </tr>
                 ))
               )}
@@ -318,6 +381,19 @@ export function ProductManager({
                       <option key={product.id} value={product.id}>{product.sku} · {product.product_model}</option>
                     ))}
                   </select>
+                </div>
+
+                <div className="field">
+                  <label>Linked Stock Product (optional)</label>
+                  <LinkedStockProductInput
+                    key={`new-${form.linkedStockProductId || "own"}`}
+                    productId=""
+                    value={form.linkedStockProductId}
+                    products={products}
+                    onChange={(value) => updateForm("linkedStockProductId", value)}
+                    ariaLabel="Linked Stock Product"
+                    placeholder="Use own stock"
+                  />
                 </div>
 
                 <ProductField
@@ -397,6 +473,71 @@ export function ProductManager({
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+function stockOptionLabel(product: Product) {
+  return `${product.sku} — ${product.product_model} — ${product.description}`;
+}
+
+function LinkedStockProductInput({
+  productId,
+  value,
+  products,
+  onChange,
+  ariaLabel,
+  placeholder = "Uses own stock",
+}: {
+  productId: string;
+  value: string;
+  products: Product[];
+  onChange: (value: string) => void;
+  ariaLabel: string;
+  placeholder?: string;
+}) {
+  const options = products.filter(
+    (candidate) =>
+      candidate.id !== productId && !candidate.linked_stock_product_id,
+  );
+  const selected = products.find((candidate) => candidate.id === value);
+  const selectedLabel = selected ? stockOptionLabel(selected) : "";
+  const [text, setText] = useState(selectedLabel);
+  const listId = `linked-stock-${productId || "new"}`;
+
+  return (
+    <>
+      <input
+        className="input"
+        list={listId}
+        aria-label={ariaLabel}
+        placeholder={placeholder}
+        value={text}
+        onChange={(event) => {
+          const next = event.target.value;
+          setText(next);
+          const match = options.find(
+            (candidate) => stockOptionLabel(candidate) === next,
+          );
+          if (match) onChange(match.id);
+        }}
+        onBlur={() => {
+          if (!text) {
+            onChange("");
+            return;
+          }
+          if (!options.some((candidate) => stockOptionLabel(candidate) === text)) {
+            setText(selectedLabel);
+          }
+        }}
+      />
+      <datalist id={listId}>
+        {options.map((candidate) => (
+          <option key={candidate.id} value={stockOptionLabel(candidate)}>
+            {candidate.brand}
+          </option>
+        ))}
+      </datalist>
     </>
   );
 }
