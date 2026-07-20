@@ -1,4 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  sortCustomersByCustomerId,
+  sortProductsByCodeAfterFirstT,
+} from "@/lib/record-sorting";
 
 export type SalesReportFilters = {
   start: string;
@@ -28,6 +32,15 @@ export type SalesReportDetail = {
   grossProfit: number;
   margin: number;
   status: string;
+};
+
+type SalesProductOption = {
+  id: string;
+  sku: string;
+  product_model: string;
+  product_type: string;
+  description: string;
+  brand: string;
 };
 
 const invalidStatuses = new Set([
@@ -87,7 +100,7 @@ export async function loadSalesReport(
   const optionInvoiceQuery = db
     .from("invoices")
     .select(
-      "invoice_date,customer_id,customer_company_name,status,customer:customers(id,company_name)",
+      "invoice_date,customer_id,customer_company_name,status,customer:customers(id,customer_code,company_name)",
     )
     .is("deleted_at", null)
     .order("invoice_date", { ascending: false })
@@ -120,7 +133,7 @@ export async function loadSalesReport(
   const error = productResult.error || optionResult.error || invoiceResult.error;
   if (error) throw new Error(error.message);
 
-  const products = (productResult.data || []).map((product: any) => ({
+  const productOptions: SalesProductOption[] = (productResult.data || []).map((product: any) => ({
     id: String(product.id),
     sku: product.sku || "",
     product_model: product.product_model || "",
@@ -128,8 +141,9 @@ export async function loadSalesReport(
     description: product.description || "",
     brand: product.brand || "",
   }));
+  const products = sortProductsByCodeAfterFirstT<SalesProductOption>(productOptions);
 
-  const customerMap = new Map<string, { key: string; id: string; company_name: string }>();
+  const customerMap = new Map<string, { key: string; id: string; customer_code: string; company_name: string }>();
   const monthSet = new Set<string>();
   for (const invoice of optionResult.data || []) {
     if (invalidStatuses.has(String(invoice.status || "").toLowerCase())) continue;
@@ -142,7 +156,14 @@ export async function loadSalesReport(
     ).trim();
     if (!company) continue;
     const key = id ? `id:${id}` : `name:${encodeURIComponent(company)}`;
-    if (!customerMap.has(key)) customerMap.set(key, { key, id, company_name: company });
+    if (!customerMap.has(key)) {
+      customerMap.set(key, {
+        key,
+        id,
+        customer_code: String(customer?.customer_code || ""),
+        company_name: company,
+      });
+    }
   }
   const currentMonth = new Date().toISOString().slice(0, 7);
   monthSet.add(currentMonth);
@@ -253,9 +274,7 @@ export async function loadSalesReport(
     filters,
     availableMonths: Array.from(monthSet).sort().reverse(),
     products,
-    customers: Array.from(customerMap.values()).sort((a, b) =>
-      a.company_name.localeCompare(b.company_name),
-    ),
+    customers: sortCustomersByCustomerId(Array.from(customerMap.values())),
     summary,
     invoices: Array.from(grouped.values()),
     details,

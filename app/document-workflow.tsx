@@ -31,6 +31,10 @@ import {
   paginateInvoiceReportItems,
 } from "@/lib/invoice-report";
 import { createInvoicePdf } from "@/lib/invoice-pdf";
+import {
+  sortCustomersByCustomerId,
+  sortProductsByCodeAfterFirstT,
+} from "@/lib/record-sorting";
 
 export type DocumentItem = {
   id: string;
@@ -116,6 +120,7 @@ export type DORecord = {
 
 type CustomerOption = {
   id: string;
+  customer_code: string;
   company_name: string;
   contact_person: string | null;
   contact_number: string | null;
@@ -614,8 +619,8 @@ function useDocumentReferenceData() {
         if (!customerResponse.ok) throw new Error(customerData.error || "Unable to load customers.");
         if (!productResponse.ok) throw new Error(productData.error || "Unable to load products.");
         if (active) {
-          setCustomers(customerData.customers || []);
-          setProducts(productData.products || []);
+          setCustomers(sortCustomersByCustomerId(customerData.customers || []));
+          setProducts(sortProductsByCodeAfterFirstT(productData.products || []));
         }
       })
       .catch((loadError) => active && setError(loadError instanceof Error ? loadError.message : "Unable to load document data."))
@@ -1047,7 +1052,13 @@ function DocumentForm({
               onChange={(e) => chooseCustomer(e.target.value)}
             />
             <datalist id="document-customers">
-              {reference.customers.map((entry) => <option key={entry.id} value={entry.company_name} />)}
+              {reference.customers.map((entry) => (
+                <option
+                  key={entry.id}
+                  value={entry.company_name}
+                  label={[entry.customer_code?.trim(), entry.company_name].filter(Boolean).join(" — ")}
+                />
+              ))}
             </datalist>
             {!customerId && customerName && <small className="field-help">Using this company for this document only. It will not be added to Customers automatically.</small>}
           </div>
@@ -1139,7 +1150,11 @@ function DocumentForm({
                   onChange={(e) => chooseProduct(row.id, e.target.value)}
                 />
                 <datalist id={`product-options-${row.id}`}>
-                  {reference.products.map((product) => <option key={product.id} value={product.sku}>{product.product_model}</option>)}
+                  {reference.products.map((product) => (
+                    <option key={product.id} value={product.sku}>
+                      {[product.sku, product.product_model, product.description].filter(Boolean).join(" — ")}
+                    </option>
+                  ))}
                 </datalist>
                 {row.sku && !row.productId && <small className="invalid-help">No matching product found.</small>}
                 {selectedInvoiceId && row.productId && <small className={`item-source ${row.invoiceItemId ? "invoice" : "extra"}`}>{row.invoiceItemId ? "Invoice Item" : "Extra Item"}</small>}
@@ -1945,7 +1960,15 @@ function RecordModal({
                 value={draft.customer.name}
                 onChange={(e) => chooseModalCustomer(e.target.value)}
               />
-              <datalist id="edit-document-customers">{reference.customers.map((entry) => <option key={entry.id} value={entry.company_name} />)}</datalist>
+              <datalist id="edit-document-customers">
+                {reference.customers.map((entry) => (
+                  <option
+                    key={entry.id}
+                    value={entry.company_name}
+                    label={[entry.customer_code?.trim(), entry.company_name].filter(Boolean).join(" — ")}
+                  />
+                ))}
+              </datalist>
             </div>
             <div className="field">
               <label>Attention</label>
@@ -2163,7 +2186,13 @@ function RecordModal({
                         value={i.sku}
                         onChange={(e) => chooseModalProduct(i.id, e.target.value)}
                       />
-                      <datalist id={`edit-product-options-${i.id}`}>{reference.products.map((product) => <option key={product.id} value={product.sku}>{product.product_model}</option>)}</datalist>
+                      <datalist id={`edit-product-options-${i.id}`}>
+                        {reference.products.map((product) => (
+                          <option key={product.id} value={product.sku}>
+                            {[product.sku, product.product_model, product.description].filter(Boolean).join(" — ")}
+                          </option>
+                        ))}
+                      </datalist>
                       {!invoice && delivery.invoiceId && i.productId && <small className={`item-source ${i.invoiceItemId ? "invoice" : "extra"}`}>{i.invoiceItemId ? "Invoice Item" : "Extra Item"}</small>}
                     </td>
                     <td>

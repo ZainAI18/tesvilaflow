@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth-session";
 import { createServerDatabase } from "@/lib/supabase-server";
+import { sortProductsByCodeAfterFirstT } from "@/lib/record-sorting";
 
 function database() {
   return createServerDatabase();
@@ -33,8 +34,7 @@ export async function GET(req: NextRequest) {
       .select(
         "id,sku,product_model,product_type,brand,opening_stock,current_stock,reserved_stock,minimum_stock,linked_stock_product_id",
       )
-      .is("deleted_at", null)
-      .order("product_model"),
+      .is("deleted_at", null),
     db
       .from("stock_movements")
       .select(
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
     };
   });
   return NextResponse.json({
-    products: inventoryProducts,
+    products: sortProductsByCodeAfterFirstT(inventoryProducts),
     movements,
     invoices: sales,
     start,

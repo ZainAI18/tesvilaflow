@@ -86,7 +86,7 @@ type SalesReportData = {
     product_model: string;
     description: string;
   }>;
-  customers: Array<{ key: string; company_name: string }>;
+  customers: Array<{ key: string; customer_code: string; company_name: string }>;
   summary: {
     invoices: number;
     salesAmount: number;
@@ -816,7 +816,9 @@ export function SalesReport() {
   }));
   const customerOptions = (data?.customers || []).map((customer) => ({
     key: customer.key,
-    label: customer.company_name,
+    label: [customer.customer_code?.trim(), customer.company_name]
+      .filter(Boolean)
+      .join(" — "),
   }));
 
   return (

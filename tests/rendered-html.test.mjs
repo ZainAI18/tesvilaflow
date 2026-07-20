@@ -4,6 +4,39 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
+test("customer and product records use the shared stable natural sorting rules", async () => {
+  const {
+    sortCustomersByCustomerId,
+    sortProductsByCodeAfterFirstT,
+  } = await import("../lib/record-sorting.ts");
+
+  const customers = sortCustomersByCustomerId([
+    { customer_code: "C10", company_name: "Ten" },
+    { customer_code: "", company_name: "Missing B" },
+    { customer_code: " c2 ", company_name: "Two" },
+    { customer_code: "C1", company_name: "One" },
+    { customer_code: null, company_name: "Missing A" },
+  ]);
+  assert.deepEqual(
+    customers.map((customer) => customer.customer_code),
+    ["C1", " c2 ", "C10", null, ""],
+  );
+
+  const products = sortProductsByCodeAfterFirstT([
+    { sku: "DG-203", product_model: "D" },
+    { sku: "T-A10", product_model: "Ten" },
+    { sku: "", product_model: "Missing" },
+    { sku: "ABC-TF-100", product_model: "F" },
+    { sku: "T-A2", product_model: "Two" },
+    { sku: "ABC-100", product_model: "A" },
+    { sku: "TES-TO-005S250", product_model: "Tesvila" },
+  ]);
+  assert.deepEqual(
+    products.map((product) => product.sku),
+    ["T-A2", "T-A10", "TES-TO-005S250", "ABC-TF-100", "ABC-100", "DG-203", ""],
+  );
+});
+
 test("uses an independent, non-persistent signed session for every tab", async () => {
   const [session, clientAuth, login, shell] = await Promise.all([
     read("lib/auth-session.ts"),
