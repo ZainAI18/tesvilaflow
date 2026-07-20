@@ -31,6 +31,11 @@ import {
   paginateInvoiceReportItems,
 } from "@/lib/invoice-report";
 import { createInvoicePdf } from "@/lib/invoice-pdf";
+import {
+  formatDiscountPercent,
+  invoiceItemLineAmount,
+  isValidDiscountPercent,
+} from "@/lib/invoice-discount";
 import { fitPdfTextSize, wrapPdfText as wrap } from "@/lib/pdf-text-layout";
 import {
   sortCustomersByCustomerId,
@@ -50,6 +55,9 @@ export type DocumentItem = {
   unitPrice: number;
   unitCost?: number;
   discount?: number;
+  discountAmount?: number;
+  discountBasisQuantity?: number;
+  discountBasisUnitPrice?: number;
   remarks: string;
   invoiceQuantity?: number;
   previouslyDeliveredQuantity?: number;
@@ -777,7 +785,9 @@ function DocumentForm({
     [deposit, setDeposit] = useState(0),
     [clientRequestId] = useState(() => crypto.randomUUID());
   const subtotal = items.reduce(
-      (s, i) => s + i.quantity * i.unitPrice - (i.discount || 0),
+      (sum, item) => sum + (invoice
+        ? invoiceItemLineAmount(item)
+        : item.quantity * item.unitPrice - (item.discount || 0)),
       0,
     ),
     gst = subtotal * 0.09,
@@ -926,6 +936,8 @@ function DocumentForm({
       )
         return `Item ${index + 1}: Delivery quantity cannot exceed the remaining quantity of ${item.remainingQuantity}.`;
       if (item.unitPrice < 0) return `Item ${index + 1}: Unit Price must be zero or greater.`;
+      if (invoice && !isValidDiscountPercent(item.discount ?? 0))
+        return `Item ${index + 1}: Discount must be between 0% and 100%, with up to 2 decimal places.`;
     }
     const invoiceItemProductPairs = items.flatMap((item) => item.invoiceItemId && item.productId ? [`${item.invoiceItemId}:${item.productId}`] : []);
     if (new Set(invoiceItemProductPairs).size !== invoiceItemProductPairs.length)
@@ -1229,19 +1241,36 @@ function DocumentForm({
                   }
                 />
               </div>
+              {invoice ? (
+                <div className="percentage-input">
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    inputMode="decimal"
+                    aria-label="Discount percentage"
+                    value={row.discount ?? 0}
+                    onChange={(e) => update(row.id, "discount", Number(e.target.value))}
+                  />
+                  <span aria-hidden="true">%</span>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    value={row.discount || 0}
+                    onChange={(e) => update(row.id, "discount", Number(e.target.value))}
+                  />
+                </div>
+              )}
               <div>
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  value={row.discount || 0}
-                  onChange={(e) =>
-                    update(row.id, "discount", Number(e.target.value))
-                  }
-                />
-              </div>
-              <div>
-                <b>{fmt(row.quantity * row.unitPrice - (row.discount || 0))}</b>
+                <b>{fmt(invoice
+                  ? invoiceItemLineAmount(row)
+                  : row.quantity * row.unitPrice - (row.discount || 0))}</b>
               </div>
               <div className="row" style={{ gap: 3 }}>
                 <button
@@ -1475,7 +1504,9 @@ function DocumentTable({ invoice = false }: { invoice?: boolean }) {
               const inv = record as InvoiceRecord,
                 dor = record as DORecord;
               const subtotal = record.items.reduce(
-                (s, x) => s + x.quantity * x.unitPrice - (x.discount || 0),
+                (sum, item) => sum + (invoice
+                  ? invoiceItemLineAmount(item)
+                  : item.quantity * item.unitPrice - (item.discount || 0)),
                 0,
               );
               return (
@@ -2298,20 +2329,30 @@ function RecordModal({
                     </td>
                     {invoice && (
                       <td>
-                        <input
-                          className="input"
-                          type="number"
-                          min="0"
-                          disabled={readOnly}
-                          value={i.discount || 0}
-                          onChange={(e) =>
-                            setItem(i.id, "discount", Number(e.target.value))
-                          }
-                        />
+                        {readOnly ? (
+                          <span className="discount-readonly">{formatDiscountPercent(i.discount || 0)}</span>
+                        ) : (
+                          <div className="percentage-input">
+                            <input
+                              className="input"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              inputMode="decimal"
+                              aria-label="Discount percentage"
+                              value={i.discount ?? 0}
+                              onChange={(e) => setItem(i.id, "discount", Number(e.target.value))}
+                            />
+                            <span aria-hidden="true">%</span>
+                          </div>
+                        )}
                       </td>
                     )}
                     <td className="document-item-amount">
-                      <b>{fmt(i.quantity * i.unitPrice - (i.discount || 0))}</b>
+                      <b>{fmt(invoice
+                        ? invoiceItemLineAmount(i)
+                        : i.quantity * i.unitPrice - (i.discount || 0))}</b>
                     </td>
                     {!readOnly && (
                       <td>
@@ -2350,7 +2391,7 @@ function RecordModal({
           {invoice &&
             (() => {
               const subtotal = inv.items.reduce(
-                  (s, i) => s + i.quantity * i.unitPrice - (i.discount || 0),
+                  (sum, item) => sum + invoiceItemLineAmount(item),
                   0,
                 ),
                 gst = (subtotal * inv.gstRate) / 100;

@@ -1,3 +1,5 @@
+import { invoiceItemLineAmount } from "./invoice-discount";
+
 export const TESVILA_COMPANY = {
   name: "Tesvila Pte Ltd",
   addressLine1: "BLOCK 4001 ANG MO KIO INDUSTRIAL PARK1",
@@ -46,6 +48,9 @@ export type InvoiceReportSource = {
     quantity: number;
     unitPrice: number;
     discount?: number;
+    discountAmount?: number;
+    discountBasisQuantity?: number;
+    discountBasisUnitPrice?: number;
   }>;
   relatedDeliveryOrders?: Array<{
     id: string;
@@ -120,13 +125,22 @@ export function buildInvoiceReportData(invoice: InvoiceReportSource) {
     description: safeText(item.description),
     quantity: safeNumber(item.quantity, 0),
     unitPrice: safeNumber(item.unitPrice, 0),
-    amount: safeNumber(item.quantity, 0) * safeNumber(item.unitPrice, 0),
+    amount: invoiceItemLineAmount({
+      ...item,
+      quantity: safeNumber(item.quantity, 0),
+      unitPrice: safeNumber(item.unitPrice, 0),
+      discount: safeNumber(item.discount, 0),
+    }),
   }));
   const calculatedSubtotal = invoice.items.reduce(
     (sum, item) =>
       sum +
-      safeNumber(item.quantity, 0) * safeNumber(item.unitPrice, 0) -
-      safeNumber(item.discount, 0),
+      invoiceItemLineAmount({
+        ...item,
+        quantity: safeNumber(item.quantity, 0),
+        unitPrice: safeNumber(item.unitPrice, 0),
+        discount: safeNumber(item.discount, 0),
+      }),
     0,
   );
   const gstRate = safeNumber(invoice.gstRate, 9);

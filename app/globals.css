@@ -610,6 +610,20 @@ textarea.input {
 .document-items-table.delivery-view-items.partial-delivery th:nth-child(12),
 .document-items-table.delivery-view-items.partial-delivery td:nth-child(12) { width: 65px; }
 .document-item-amount { white-space: nowrap; }
+.percentage-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid #dfe4e1;
+  border-radius: 7px;
+  background: white;
+  overflow: hidden;
+}
+.percentage-input:focus-within { border-color: var(--tesvila-blue); box-shadow: 0 0 0 3px #053a7c18; }
+.percentage-input .input { border: 0; border-radius: 0; box-shadow: none; }
+.percentage-input > span { padding: 0 9px 0 4px; color: var(--muted); font-size: 11px; font-weight: 800; }
+.discount-readonly { display: inline-block; min-width: 48px; padding: 8px 0; font-variant-numeric: tabular-nums; font-weight: 700; }
 .document-items-table th,
 .document-items-table td,
 .table th,
