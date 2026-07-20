@@ -268,6 +268,22 @@ test("Invoice hard deletion cascades in Supabase and restores saved physical sto
   assert.match(migration, /invoice_hard_deleted/);
 });
 
+test("Delivery Order view separates Brand and protects linked quantity columns", async () => {
+  const [workflow, styles] = await Promise.all([
+    read("app/document-workflow.tsx"),
+    read("app/globals.css"),
+  ]);
+
+  assert.match(workflow, /delivery-view-items/);
+  assert.match(workflow, /\{!invoice && <th>Brand<\/th>\}/);
+  assert.match(workflow, /<th>Invoice Qty<\/th>/);
+  assert.match(workflow, /className="document-item-amount"/);
+  assert.match(styles, /delivery-view-items\.partial-delivery \{ min-width: 1430px; \}/);
+  assert.match(styles, /nth-child\(5\)[\s\S]*width: 110px/);
+  assert.match(styles, /nth-child\(6\)[\s\S]*width: 95px; text-align: center/);
+  assert.match(styles, /document-item-amount \{ white-space: nowrap; \}/);
+});
+
 test("administration pages are removed without changing authentication or company document details", async () => {
   const [shell, login, workflow] = await Promise.all([
     read("app/tesvila-app.tsx"),
